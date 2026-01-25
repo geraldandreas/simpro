@@ -22,12 +22,12 @@ export default function Sidebar() {
   const [role, setRole] = useState("Mahasiswa");
 
   const menuItems = [
-    { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" },
-    { icon: FileUp, label: "Unggah Proposal", href: "/uploadproposal" },
-    { icon: MessageSquare, label: "Bimbingan", href: "/bimbinganmahasiswa" },
-    { icon: FileText, label: "Unggah Dokumen Seminar", href: "/uploaddokumen" },
-    { icon: Calendar, label: "Jadwal Seminar & Sidang", href: "/jadwal" },
-    { icon: Edit3, label: "Perbaikan Pasca Seminar", href: "/perbaikan" },
+    { icon: LayoutDashboard, label: "Dashboard", href: "/mahasiswa/dashboard" },
+    { icon: FileUp, label: "Unggah Proposal", href: "/mahasiswa/uploadproposal" },
+    { icon: MessageSquare, label: "Bimbingan", href: "/mahasiswa/bimbinganmahasiswa" },
+    { icon: FileText, label: "Unggah Dokumen Seminar", href: "/mahasiswa/uploaddokumen" },
+    { icon: Calendar, label: "Jadwal Seminar & Sidang", href: "/mahasiswa/jadwal" },
+    { icon: Edit3, label: "Perbaikan Pasca Seminar", href: "/mahasiswa/perbaikan" },
   ];
 
   // ---------------- LOAD USER NAME ----------------

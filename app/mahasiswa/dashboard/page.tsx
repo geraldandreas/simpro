@@ -1,14 +1,14 @@
 "use client";
 
-import React from 'react';
-import Sidebar from '@/components/sidebar'; // Menggunakan komponen sidebar Anda
-import { usePathname } from 'next/navigation';
+import React, { useEffect, useState } from 'react';
+import Sidebar from '@/components/sidebar';
+import { supabase } from '@/lib/supabaseClient';
 import { 
   FileText, Bell, Check, X, Clock, MessageSquare 
 } from 'lucide-react';
 
 // --- TYPES DEFINITIONS ---
-// Types untuk komponen internal (Timeline, Document, Summary, Contact)
+
 interface TimelineStepProps {
   label: string;
   completed?: boolean;
@@ -28,14 +28,122 @@ interface ContactCardProps {
 }
 
 // --- MAIN COMPONENT ---
+
 const DashboardMahasiswa: React.FC = () => {
+  const [activeStep, setActiveStep] = useState<number>(0);
+  const [loadingStep, setLoadingStep] = useState<boolean>(true);
+
+  useEffect(() => {
+    const loadProgress = async () => {
+      try {
+        const { data: auth } = await supabase.auth.getUser();
+        if (!auth?.user) return;
+
+        const userId = auth.user.id;
+
+        // 1️⃣ cek proposal
+        const { data: proposal } = await supabase
+          .from("proposals")
+          .select("id, status")
+          .eq("user_id", userId)
+          .maybeSingle();
+
+        if (!proposal) {
+          setActiveStep(0);
+          return;
+        }
+
+        if (proposal.status === "Menunggu Persetujuan Dosbing") {
+          setActiveStep(1);
+          return;
+        }
+
+        if (proposal.status === "Diterima") {
+
+          // 2️⃣ cek bimbingan
+          const { data: sessions } = await supabase
+            .from("guidance_sessions")
+            .select("id")
+            .eq("proposal_id", proposal.id);
+
+          if (!sessions || sessions.length === 0) {
+            setActiveStep(2);
+            return;
+          }
+
+          // 3️⃣ cek seminar request
+          const { data: seminarReq } = await supabase
+            .from("seminar_requests")
+            .select("id, status")
+            .eq("proposal_id", proposal.id)
+            .eq("tipe", "seminar")
+            .maybeSingle();
+
+          if (!seminarReq) {
+            setActiveStep(3);
+            return;
+          }
+
+          if (seminarReq.status === "draft") {
+            setActiveStep(4);
+            return;
+          }
+
+          // 4️⃣ cek dokumen seminar
+          const { data: docs } = await supabase
+            .from("seminar_documents")
+            .select("status")
+            .eq("proposal_id", proposal.id);
+
+          const hasIncompleteDocs = docs?.some(d =>
+            ["Belum Lengkap", "Menunggu Verifikasi"].includes(d.status)
+          );
+
+          if (hasIncompleteDocs) {
+            setActiveStep(5);
+            return;
+          }
+
+          const allComplete = docs?.every(d => d.status === "Lengkap");
+          if (allComplete) {
+            setActiveStep(6);
+            return;
+          }
+
+          // 5️⃣ cek jadwal seminar
+          const { data: schedule } = await supabase
+            .from("seminar_schedules")
+            .select("id")
+            .eq("seminar_request_id", seminarReq.id)
+            .maybeSingle();
+
+          if (schedule) {
+            setActiveStep(7);
+            return;
+          }
+        }
+
+        setActiveStep(2);
+      } catch (err) {
+        console.error("Load progress error:", err);
+      } finally {
+        setLoadingStep(false);
+      }
+    };
+
+    loadProgress();
+  }, []);
+
+  const getStepProps = (index: number) => {
+    if (index < activeStep) return { completed: true };
+    if (index === activeStep) return { current: true };
+    return {};
+  };
+
   return (
     <div className="flex min-h-screen bg-[#f8f9fa] font-sans text-slate-700">
-      
-      {/* SIDEBAR TERPISAH */}
       <Sidebar />
 
-      {/* MAIN CONTENT - Diberi ml-64 agar konten tidak tertutup sidebar yang posisinya fixed */}
       <main className="flex-1 ml-64 overflow-y-auto">
         <header className="h-16 bg-white border-b border-gray-100 flex items-center justify-end px-8 sticky top-0 z-20">
           <button className="text-gray-400 hover:text-blue-600 relative">
@@ -52,23 +160,38 @@ const DashboardMahasiswa: React.FC = () => {
           {/* TIMELINE PROGRESS */}
           <section className="bg-white p-8 rounded-xl shadow-sm border border-gray-50 mb-8 overflow-x-auto">
             <h3 className="text-sm font-bold text-gray-500 mb-12">Linimasa Progres Skripsi</h3>
-            <div className="relative flex justify-between items-start min-w-[800px]">
-              <div className="absolute top-5 left-0 w-full h-1 bg-gray-200 z-0"></div>
-              <div className="absolute top-5 left-0 w-[30%] h-1 bg-emerald-400 z-0"></div>
 
-              <TimelineStep label="Pengajuan Proposal" completed />
-              <TimelineStep label="Persetujuan Proposal" completed />
-              <TimelineStep label="Proses Bimbingan" current />
-              <TimelineStep label="Persetujuan Kesiapan Seminar" />
-              <TimelineStep label="Unggah Dokumen Seminar" />
-              <TimelineStep label="Verifikasi Tendik" />
-              <TimelineStep label="Seminar" />
-              <TimelineStep label="Perbaikan Pasca Seminar" />
-              <TimelineStep label="Sidang Skripsi" />
-            </div>
+            {!loadingStep && (
+              <div className="relative flex justify-between items-start min-w-[800px]">
+                <div className="absolute top-5 left-0 w-full h-1 bg-gray-200 z-0"></div>
+
+                <div
+                  className="absolute top-5 left-0 h-1 bg-emerald-400 z-0 transition-all duration-500"
+                  style={{ width: `${(activeStep / 8) * 100}%` }}
+                />
+
+                {[
+                  "Pengajuan Proposal",
+                  "Persetujuan Proposal",
+                  "Proses Bimbingan",
+                  "Persetujuan Kesiapan Seminar",
+                  "Unggah Dokumen Seminar",
+                  "Verifikasi Tendik",
+                  "Seminar",
+                  "Perbaikan Pasca Seminar",
+                  "Sidang Skripsi",
+                ].map((label, index) => (
+                  <TimelineStep
+                    key={label}
+                    label={label}
+                    {...getStepProps(index)}
+                  />
+                ))}
+              </div>
+            )}
           </section>
 
-          {/* GRID CARDS */}
+          {/* ================= GRID CARDS ================= */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Dokumen */}
             <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm flex flex-col items-center">
@@ -111,7 +234,7 @@ const DashboardMahasiswa: React.FC = () => {
   );
 };
 
-// --- HELPER COMPONENTS (Tetap di sini karena spesifik untuk konten dashboard) ---
+// --- HELPER COMPONENTS ---
 
 const TimelineStep: React.FC<TimelineStepProps> = ({ label, completed, current }) => (
   <div className="relative z-10 flex flex-col items-center w-20 text-center">

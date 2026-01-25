@@ -1,6 +1,7 @@
 "use client";
 
 import { Search, Bell } from 'lucide-react';
+import Link from "next/link";
 
 export default function PengajuanSeminarPage() {
   // Data dummy sesuai screenshot
@@ -17,14 +18,14 @@ export default function PengajuanSeminarPage() {
   return (
     <div className="min-h-screen bg-[#F8F9FB]">
       
-       <header className="h-16 bg-white border-b border-gray-100 flex items-center justify-between px-8 sticky top-0 z-20">
-              <div className="relative w-96">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300" size={18} />
-                <input 
-                  type="text" 
-                  placeholder="Search" 
-                  className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-100"
-                />
+      <header className="h-16 bg-white border-b border-gray-100 flex items-center justify-between px-8 sticky top-0 z-20">
+        <div className="relative w-96">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300" size={18} />
+          <input 
+            type="text" 
+            placeholder="Search" 
+            className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-100"
+          />
         </div>
 
         <button className="relative p-2 hover:bg-gray-50 rounded-full transition-colors">
@@ -38,7 +39,9 @@ export default function PengajuanSeminarPage() {
         
         {/* Page Title */}
         <div className="mb-8">
-          <h1 className="text-xl font-bold text-gray-900">Tetapkan Jadwal Seminar Mahasiswa</h1>
+          <h1 className="text-xl font-bold text-gray-900">
+            Tetapkan Jadwal Seminar Mahasiswa
+          </h1>
         </div>
 
         {/* --- TABLE CARD --- */}
@@ -70,9 +73,11 @@ export default function PengajuanSeminarPage() {
                       {item.bidang}
                     </td>
                     <td className="py-5 px-8 text-center align-top">
-                      <button className="bg-[#3b608a] text-white text-sm font-medium rounded-lg hover:bg-blue-1000 transition-colors shadow-sm whitespace-nowrap">
-                        Tetapkan Jadwal Seminar
-                      </button>
+                      <Link href="/kaprodi/dashboardkaprodi/penjadwalanseminar">
+                        <button className="bg-[#3b608a] text-white text-sm font-medium rounded-lg hover:bg-blue-1000 transition-colors shadow-sm whitespace-nowrap px-4 py-2">
+                          Tetapkan Jadwal Seminar
+                        </button>
+                      </Link>
                     </td>
                   </tr>
                 ))}
@@ -80,7 +85,7 @@ export default function PengajuanSeminarPage() {
             </table>
           </div>
 
-          {/* Empty Space Filler (Agar card tetap panjang ke bawah seperti di gambar) */}
+          {/* Empty Space Filler */}
           <div className="h-full bg-white"></div>
         </div>
 

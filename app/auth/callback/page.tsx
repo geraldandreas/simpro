@@ -58,16 +58,16 @@ export default function AuthCallback() {
        */
       switch (finalProfile.role) {
         case 'mahasiswa':
-          router.replace('/dashboard')
+          router.replace('/mahasiswa/dashboard')
           break
         case 'dosen':
-          router.replace('/dashboarddosen')
+          router.replace('/dosen/dashboarddosen')
           break
         case 'kaprodi':
-          router.replace('/dashboardkaprodi')
+          router.replace('/kaprodi/dashboardkaprodi')
           break
         case 'tendik':
-          router.replace('/dashboardtendik')
+          router.replace('/tendik/dashboardtendik')
           break
         default:
           alert('Role tidak dikenali')

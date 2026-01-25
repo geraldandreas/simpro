@@ -12,13 +12,14 @@ export default function SidebarKaprodi() {
   const pathname = usePathname();
 
   const menuItems = [
-    { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboardkaprodi' },
-    { icon: Users, label: 'Mahasiswa Bimbingan', href: '/dashboardkaprodi/mahasiswa-bimbingan' },
-    { icon: FolderOpen, label: 'Akses Proposal', href: '/dashboardkaprodi/aksesproposal' },
-    { icon: BarChart2, label: 'Progres Semua Mahasiswa', href: '/dashboardkaprodi/progres-mahasiswa' },
-    { icon: FileCheck, label: 'Pengajuan Seminar', href: '/dashboardkaprodi/pengajuanseminar' },
-    { icon: FileText, label: 'Pengajuan Sidang', href: '/dashboardkaprodi/pengajuan-sidang' },
-  ];
+  { icon: LayoutDashboard, label: 'Dashboard', href: '/kaprodi/dashboardkaprodi' },
+  { icon: Users, label: 'Mahasiswa Bimbingan', href: '/kaprodi/dashboardkaprodi/mahasiswabimbingan' },
+  { icon: FolderOpen, label: 'Akses Proposal', href: '/kaprodi/dashboardkaprodi/aksesproposal' },
+  { icon: BarChart2, label: 'Progres Semua Mahasiswa', href: '/kaprodi/dashboardkaprodi/progressemuamahasiswa' },
+  { icon: FileCheck, label: 'Pengajuan Seminar', href: '/kaprodi/dashboardkaprodi/pengajuanseminar' },
+  { icon: FileText, label: 'Pengajuan Sidang', href: '/kaprodi/dashboardkaprodi/pengajuansidang' },
+];
+
 
   return (
     <aside className="w-64 bg-white border-r border-gray-200 flex flex-col fixed h-full z-30">
