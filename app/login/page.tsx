@@ -29,16 +29,16 @@ export default function Login() {
 
     switch (profile.role) {
       case 'mahasiswa':
-        router.push('/dashboard');
+        router.push('/mahasiswa/dashboard');
         break;
       case 'dosen':
-        router.push('/dashboarddosen');
+        router.push('/dosen/dashboarddosen');
         break;
       case 'kaprodi':
-        router.push('/dashboardkaprodi');
+        router.push('/kaprodi/dashboardkaprodi');
         break;
       case 'tendik':
-        router.push('/dashboardtendik');
+        router.push('/tendik/dashboardtendik');
         break;
       default:
         alert('Role tidak dikenali.');

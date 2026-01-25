@@ -1,11 +1,13 @@
 "use client";
 
+import React from "react";
+import Link from "next/link"; // 1. Import Link Next.js
 import { 
   Search, Bell, ChevronDown, Hourglass 
 } from 'lucide-react';
 
 export default function AksesProposalPage() {
-  // Data dummy sesuai gambar
+  // Data dummy sesuai gambar (Tanpa Fetch)
   const proposals = [
     {
       id: 1,
@@ -15,7 +17,14 @@ export default function AksesProposalPage() {
       bidang: "AI",
       status: "Menunggu Verifikasi",
     },
-    // Tambahkan data dummy lain jika perlu untuk testing scroll
+    {
+      id: 2,
+      nama: "Budi Santoso",
+      npm: "140810220045",
+      judul: "Implementasi IoT pada Smart Farming Hidroponik",
+      bidang: "IoT",
+      status: "Diterima",
+    },
   ];
 
   return (
@@ -30,7 +39,6 @@ export default function AksesProposalPage() {
                   className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-100"
                 />
         </div>
-
 
         {/* Notification Bell */}
         <button className="relative p-2 hover:bg-gray-50 rounded-full transition-colors">
@@ -56,7 +64,7 @@ export default function AksesProposalPage() {
             <div className="flex-1 min-w-[200px]">
               <label className="block text-lg font-semibold text-gray-900 mb-3">Bidang:</label>
               <div className="relative">
-                <select className="w-full appearance-none bg-white border border-gray-200 text-gray-700 py-3 px-4 rounded-lg focus:outline-none focus:border-blue-500 font-medium">
+                <select className="w-full appearance-none bg-white border border-gray-200 text-gray-700 py-3 px-4 rounded-lg focus:outline-none focus:border-blue-500 font-medium cursor-pointer">
                   <option>Semua</option>
                   <option>AI</option>
                   <option>Data Science</option>
@@ -70,7 +78,7 @@ export default function AksesProposalPage() {
             <div className="flex-1 min-w-[200px]">
               <label className="block text-lg font-semibold text-gray-900 mb-3">Status:</label>
               <div className="relative">
-                <select className="w-full appearance-none bg-white border border-gray-200 text-gray-700 py-3 px-4 rounded-lg focus:outline-none focus:border-blue-500 font-medium">
+                <select className="w-full appearance-none bg-white border border-gray-200 text-gray-700 py-3 px-4 rounded-lg focus:outline-none focus:border-blue-500 font-medium cursor-pointer">
                   <option>Menunggu</option>
                   <option>Diterima</option>
                   <option>Ditolak</option>
@@ -127,17 +135,19 @@ export default function AksesProposalPage() {
                       </div>
                     </td>
                     <td className="py-5 px-6 text-center">
-                      <button className="px-5 py-2.5 bg-[#8C8C8C] text-white text-xs font-bold rounded-lg hover:bg-gray-600 transition-colors shadow-sm">
-                        Lihat Detail
-                      </button>
-                    </td>
+  <Link href={`detailproposal?id=${item.id}`}>
+    <button className="px-5 py-2.5 bg-[#8C8C8C] text-white text-xs font-bold rounded-lg hover:bg-gray-600 transition-colors shadow-sm cursor-pointer">
+      Lihat Detail
+    </button>
+  </Link>
+</td>
+
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
           
-          {/* Empty State (Jika data kosong, area putih tetap ada di bawah seperti di gambar) */}
           <div className="h-40"></div> 
         </div>
 

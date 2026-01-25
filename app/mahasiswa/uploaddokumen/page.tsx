@@ -7,7 +7,7 @@ import { Bell, Search, Check, X, Clock, Layout, AlertCircle } from 'lucide-react
 
 interface DocumentData {
   id?: string;
-  status: string;
+  status: string; // 'Belum Lengkap' | 'Menunggu Verifikasi' | 'Lengkap' | 'Ditolak'
   file_url?: string;
 }
 
@@ -109,9 +109,18 @@ export default function UnggahDokumenSeminar() {
 
     try {
       setLoading(true);
+<<<<<<< HEAD:app/(mahasiswa)/uploaddokumen/page.tsx
 
       const filePath = `${proposalId}/${docId}_${Date.now()}.pdf`;
 
+=======
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("User tidak ditemukan");
+      
+      // Menggunakan timestamp agar nama file unik
+      const filePath = `${user.id}/${docId}_${Date.now()}.pdf`;
+
+>>>>>>> 2eb017b2912eadf62a9a8f8c35198d2e39235d76:app/mahasiswa/uploaddokumen/page.tsx
       // Upload storage
       const { error: storageError } = await supabase.storage
         .from('docseminar')
@@ -126,12 +135,20 @@ export default function UnggahDokumenSeminar() {
           proposal_id: proposalId,
           nama_dokumen: docId,
           file_url: filePath,
+<<<<<<< HEAD:app/(mahasiswa)/uploaddokumen/page.tsx
           status: 'Menunggu Verifikasi'
+=======
+          status: 'Menunggu Verifikasi' // Default status setelah upload
+>>>>>>> 2eb017b2912eadf62a9a8f8c35198d2e39235d76:app/mahasiswa/uploaddokumen/page.tsx
         }, { onConflict: 'proposal_id,nama_dokumen' });
 
       if (dbError) throw dbError;
 
+<<<<<<< HEAD:app/(mahasiswa)/uploaddokumen/page.tsx
       alert("✅ Berhasil diunggah");
+=======
+      alert("✅ Berhasil diunggah. Menunggu verifikasi Tendik.");
+>>>>>>> 2eb017b2912eadf62a9a8f8c35198d2e39235d76:app/mahasiswa/uploaddokumen/page.tsx
       await fetchInitialData();
 
     } catch (error: any) {
@@ -170,6 +187,7 @@ export default function UnggahDokumenSeminar() {
     }
   };
 
+<<<<<<< HEAD:app/(mahasiswa)/uploaddokumen/page.tsx
   // ================= PROGRESS =================
 
   const countLengkap = (docList: typeof academicDocs) => {
@@ -180,6 +198,21 @@ export default function UnggahDokumenSeminar() {
   const currentAdmin = countLengkap(adminDocs);
   const totalLengkap = currentAcademic + currentAdmin;
   const percentage = Math.round((totalLengkap / 17) * 100);
+=======
+  // ================= PROGRESS CALCULATION =================
+  
+  // Fungsi ini HANYA menghitung yang statusnya 'Lengkap' (Verified)
+  const countVerified = (docList: typeof academicDocs) => {
+    return docList.filter(d => documents[d.id]?.status === 'Lengkap').length;
+  };
+
+  const verifiedAcademic = countVerified(academicDocs);
+  const verifiedAdmin = countVerified(adminDocs);
+  
+  const totalVerified = verifiedAcademic + verifiedAdmin;
+  const totalDocs = 17; // Total semua dokumen
+  const percentage = Math.round((totalVerified / totalDocs) * 100);
+>>>>>>> 2eb017b2912eadf62a9a8f8c35198d2e39235d76:app/mahasiswa/uploaddokumen/page.tsx
 
   // ================= SUBMIT SEMINAR =================
 
@@ -241,15 +274,52 @@ export default function UnggahDokumenSeminar() {
             </div>
           )}
 
+<<<<<<< HEAD:app/(mahasiswa)/uploaddokumen/page.tsx
           {/* PROGRESS */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 mb-6 shrink-0 flex items-center justify-between">
             <div className="flex-1">
               <h1 className="text-xl font-bold text-gray-800 mb-2">Kelengkapan Dokumen Seminar</h1>
               <p className="text-lg font-bold text-gray-800 mb-4">{totalLengkap} dari 17 <span className="text-gray-400 font-medium">dokumen lengkap</span></p>
+=======
+          {/* PROGRESS CARD (UPDATED UI) */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 mb-6 shrink-0 flex items-center justify-between">
+            <div className="flex-1">
+              <h1 className="text-xl font-bold text-gray-800 mb-2">Kelengkapan Dokumen Seminar</h1>
+              <p className="text-lg font-bold text-gray-800 mb-4">
+                {totalVerified} dari {totalDocs} <span className="text-gray-400 font-medium">dokumen terverifikasi</span>
+              </p>
+              {/* Linear Progress Bar */}
+>>>>>>> 2eb017b2912eadf62a9a8f8c35198d2e39235d76:app/mahasiswa/uploaddokumen/page.tsx
               <div className="w-full bg-gray-100 h-4 rounded-full overflow-hidden">
-                <div className="bg-blue-400 h-full transition-all duration-700" style={{ width: `${percentage}%` }}></div>
+                <div 
+                  className="bg-blue-600 h-full transition-all duration-700 ease-out" 
+                  style={{ width: `${percentage}%` }}
+                ></div>
               </div>
             </div>
+<<<<<<< HEAD:app/(mahasiswa)/uploaddokumen/page.tsx
+=======
+
+            {/* Circular Progress (Donut Chart) */}
+            <div className="ml-12 relative w-32 h-32 flex items-center justify-center">
+              <svg className="w-full h-full transform -rotate-90">
+                {/* Background Circle */}
+                <circle cx="64" cy="64" r="58" stroke="#f3f4f6" strokeWidth="12" fill="transparent" />
+                {/* Progress Circle */}
+                <circle 
+                  cx="64" cy="64" r="58" 
+                  stroke="#2563eb" 
+                  strokeWidth="12" 
+                  fill="transparent" 
+                  strokeDasharray="364.4" 
+                  strokeDashoffset={364.4 - (364.4 * percentage) / 100} 
+                  strokeLinecap="round"
+                  className="transition-all duration-1000 ease-out" 
+                />
+              </svg>
+              <span className="absolute text-3xl font-bold text-blue-600">{percentage}%</span>
+            </div>
+>>>>>>> 2eb017b2912eadf62a9a8f8c35198d2e39235d76:app/mahasiswa/uploaddokumen/page.tsx
           </div>
 
           {/* LIST */}
@@ -263,7 +333,11 @@ export default function UnggahDokumenSeminar() {
                     <Layout className="text-blue-400" size={20} />
                     <h2 className="text-lg font-bold text-gray-800">Akademik</h2>
                   </div>
+<<<<<<< HEAD:app/(mahasiswa)/uploaddokumen/page.tsx
                   <span className="text-sm font-bold text-gray-400">{currentAcademic}/6 Lengkap</span>
+=======
+                  <span className="text-sm font-bold text-gray-400">{verifiedAcademic}/6 Terverifikasi</span>
+>>>>>>> 2eb017b2912eadf62a9a8f8c35198d2e39235d76:app/mahasiswa/uploaddokumen/page.tsx
                 </div>
                 <div className="space-y-1">
                   {academicDocs.map(doc => (
@@ -285,7 +359,11 @@ export default function UnggahDokumenSeminar() {
                     <Layout className="text-blue-400" size={20} />
                     <h2 className="text-lg font-bold text-gray-800">Administrasi</h2>
                   </div>
+<<<<<<< HEAD:app/(mahasiswa)/uploaddokumen/page.tsx
                   <span className="text-sm font-bold text-gray-400">{currentAdmin}/11 Lengkap</span>
+=======
+                  <span className="text-sm font-bold text-gray-400">{verifiedAdmin}/11 Terverifikasi</span>
+>>>>>>> 2eb017b2912eadf62a9a8f8c35198d2e39235d76:app/mahasiswa/uploaddokumen/page.tsx
                 </div>
                 <div className="space-y-1">
                   {adminDocs.map(doc => (
@@ -303,11 +381,20 @@ export default function UnggahDokumenSeminar() {
               <div className="pt-6 border-t flex justify-end">
                 <button
                   onClick={handleSubmitSeminar}
+<<<<<<< HEAD:app/(mahasiswa)/uploaddokumen/page.tsx
                   disabled={percentage < 100 || loading}
                   className={`px-10 py-3 rounded-lg font-bold transition ${
                     percentage === 100
                       ? 'bg-blue-600 text-white'
                       : 'bg-gray-100 text-gray-400'
+=======
+                  // Tombol hanya aktif jika persentase 100% (Semua status = Lengkap)
+                  disabled={percentage < 100 || loading}
+                  className={`px-10 py-3 rounded-lg font-bold transition ${
+                    percentage === 100
+                      ? 'bg-blue-600 text-white hover:bg-blue-700'
+                      : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+>>>>>>> 2eb017b2912eadf62a9a8f8c35198d2e39235d76:app/mahasiswa/uploaddokumen/page.tsx
                   }`}
                 >
                   Ajukan Seminar
@@ -322,17 +409,26 @@ export default function UnggahDokumenSeminar() {
   );
 }
 
+<<<<<<< HEAD:app/(mahasiswa)/uploaddokumen/page.tsx
 // ================= ROW =================
+=======
+// ================= ROW COMPONENT =================
+>>>>>>> 2eb017b2912eadf62a9a8f8c35198d2e39235d76:app/mahasiswa/uploaddokumen/page.tsx
 
 function DocumentRow({ label, subLabel, data, onUpload, onDelete }: any) {
   const fileRef = useRef<HTMLInputElement>(null);
+  
+  // Status dari database
   const status = data?.status || 'Belum Lengkap';
+  
+  // Helper variables
   const isPending = status === 'Menunggu Verifikasi';
   const isComplete = status === 'Lengkap';
   const hasFile = !!data?.file_url;
 
   const handleView = async () => {
     if (!data?.file_url) return;
+<<<<<<< HEAD:app/(mahasiswa)/uploaddokumen/page.tsx
     const { data: signed } = await supabase.storage
       .from('docseminar')
       .createSignedUrl(data.file_url, 120);
@@ -340,11 +436,34 @@ function DocumentRow({ label, subLabel, data, onUpload, onDelete }: any) {
     if (signed?.signedUrl) {
       window.open(signed.signedUrl, '_blank');
     }
+=======
+
+    const { data: signed, error } = await supabase.storage
+      .from('docseminar')
+      .createSignedUrl(data.file_url, 300); // URL valid 5 menit
+
+    if (error || !signed?.signedUrl) {
+      alert("Gagal membuka file");
+      return;
+    }
+
+    // Force download trick
+    const link = document.createElement("a");
+    link.href = signed.signedUrl;
+    link.download = data.file_url.split("/").pop() || "dokumen.pdf";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+>>>>>>> 2eb017b2912eadf62a9a8f8c35198d2e39235d76:app/mahasiswa/uploaddokumen/page.tsx
   };
 
   return (
     <div className="flex items-center justify-between p-4 hover:bg-gray-50/50 border-b border-gray-50 last:border-0 transition-colors">
       <div className="flex items-center gap-4 flex-1">
+<<<<<<< HEAD:app/(mahasiswa)/uploaddokumen/page.tsx
+=======
+        {/* Ikon Status: Hijau jika Lengkap, Kuning jika Menunggu, Merah jika Kosong */}
+>>>>>>> 2eb017b2912eadf62a9a8f8c35198d2e39235d76:app/mahasiswa/uploaddokumen/page.tsx
         <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
           isComplete ? 'bg-emerald-100 text-emerald-600' :
           isPending ? 'bg-yellow-100 text-yellow-600' :
@@ -373,9 +492,22 @@ function DocumentRow({ label, subLabel, data, onUpload, onDelete }: any) {
           </div>
         )}
 
+<<<<<<< HEAD:app/(mahasiswa)/uploaddokumen/page.tsx
         {status === 'Belum Lengkap' && (
           <span className="text-[12px] font-bold text-red-500 uppercase mr-4">
             Belum Lengkap
+=======
+        {/* Jika verified, tampilkan status Lengkap */}
+        {isComplete && (
+          <span className="text-[12px] font-bold text-emerald-600 uppercase mr-4">
+            Terverifikasi
+          </span>
+        )}
+
+        {status === 'Belum Lengkap' && (
+          <span className="text-[12px] font-bold text-red-500 uppercase mr-4">
+            Belum Upload
+>>>>>>> 2eb017b2912eadf62a9a8f8c35198d2e39235d76:app/mahasiswa/uploaddokumen/page.tsx
           </span>
         )}
 
