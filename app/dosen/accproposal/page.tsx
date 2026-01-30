@@ -7,13 +7,10 @@ import {
   Bell, 
   User, 
   FileText, 
-  ArrowLeft,
-  CheckCircle,
-  Info,
-  Clock
+  ArrowLeft 
 } from "lucide-react";
 import Link from "next/link";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
 // ---------------- TYPES ----------------
@@ -31,13 +28,13 @@ interface ProposalDetail {
 
 // ---------------- PAGE ----------------
 
-export default function DetailProposalMahasiswa() {
+export default function DetailProposalKaprodi() {
   const searchParams = useSearchParams();
-  const router = useRouter();
   const proposalId = searchParams.get("id");
 
   const [proposal, setProposal] = useState<ProposalDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [approving, setApproving] = useState(false);
   const [openingPdf, setOpeningPdf] = useState(false);
 
   // ================= FETCH DETAIL =================
@@ -47,39 +44,36 @@ export default function DetailProposalMahasiswa() {
 
     setLoading(true);
 
-    try {
-      const { data, error } = await supabase
-        .from("proposals")
-        .select(`
-          id,
-          judul,
-          file_path,
-          status,
-          user:profiles!proposals_mahasiswa_id_fkey (
-            nama,
-            npm
-          )
-        `)
-        .eq("id", proposalId)
-        .single();
+    const { data, error } = await supabase
+      .from("proposals")
+      .select(`
+        id,
+        judul,
+        file_path,
+        status,
+        user:profiles (
+          nama,
+          npm
+        )
+      `)
+      .eq("id", proposalId)
+      .single();
 
-      if (error) throw error;
-      
-      setProposal(data);
-
-    } catch (error: any) {
-      console.error("Fetch proposal error:", error.message);
+    if (error) {
+      console.error("Fetch proposal error:", error);
       alert("Gagal memuat data proposal");
-    } finally {
-      setLoading(false);
+    } else {
+      setProposal(data);
     }
+
+    setLoading(false);
   };
 
   useEffect(() => {
     fetchProposal();
   }, [proposalId]);
 
-  // ================= ACTIONS =================
+  // ================= OPEN PDF =================
 
   const handleOpenPdf = async () => {
     if (!proposal?.file_path) {
@@ -90,9 +84,12 @@ export default function DetailProposalMahasiswa() {
     try {
       setOpeningPdf(true);
 
+      /**
+       * ⚠️ GANTI "proposal-files" dengan nama bucket kamu
+       */
       const { data, error } = await supabase.storage
-        .from("proposal_files") 
-        .createSignedUrl(proposal.file_path, 3600); 
+        .from("proposals")
+        .createSignedUrl(proposal.file_path, 60); // valid 60 detik
 
       if (error) throw error;
 
@@ -102,19 +99,43 @@ export default function DetailProposalMahasiswa() {
         alert("Gagal membuka file");
       }
 
-    } catch (err: any) {
-      console.error("Open PDF error:", err.message);
+    } catch (err) {
+      console.error("Open PDF error:", err);
       alert("Tidak bisa membuka file (akses ditolak / file tidak ditemukan)");
     } finally {
       setOpeningPdf(false);
     }
   };
 
-  // ================= UI RENDER =================
+  // ================= APPROVE HANDLER =================
+
+  const handleApprove = async () => {
+    if (!proposal) return;
+
+    const confirm = window.confirm("Yakin ingin menyetujui proposal ini?");
+    if (!confirm) return;
+
+    setApproving(true);
+
+    const { error } = await supabase
+      .from("proposals")
+      .update({ status: "Diterima" })
+      .eq("id", proposal.id);
+
+    if (error) {
+      console.error("Approve error:", error);
+      alert("Gagal menyetujui proposal");
+    } else {
+      alert("Proposal berhasil disetujui ✅");
+      fetchProposal();
+    }
+
+    setApproving(false);
+  };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen text-gray-500 bg-[#F8F9FB]">
+      <div className="flex items-center justify-center h-screen text-gray-500">
         Memuat data...
       </div>
     );
@@ -122,13 +143,13 @@ export default function DetailProposalMahasiswa() {
 
   if (!proposal) {
     return (
-      <div className="flex items-center justify-center h-screen text-red-500 bg-[#F8F9FB]">
-        Data proposal tidak ditemukan.
+      <div className="flex items-center justify-center h-screen text-red-500">
+        Data proposal tidak ditemukan
       </div>
     );
   }
 
-  const isAccepted = proposal.status === "Diterima";
+  // ================= RENDER =================
 
   return (
     <div className="flex min-h-screen bg-[#F8F9FB] font-sans text-slate-700">
@@ -139,13 +160,17 @@ export default function DetailProposalMahasiswa() {
         {/* HEADER */}
         <header className="h-20 bg-white border-b border-gray-100 flex items-center justify-between px-8 sticky top-0 z-20 shrink-0">
           <div className="relative w-96">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300" size={20} />
+            <Search
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300"
+              size={20}
+            />
             <input 
               type="text" 
               placeholder="Search" 
               className="w-full pl-12 pr-4 py-2.5 bg-gray-50 border border-gray-100 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-100 transition-all"
             />
           </div>
+
           <button className="relative p-2 hover:bg-gray-50 rounded-full transition-colors">
             <Bell size={22} className="text-gray-400" />
             <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
@@ -155,14 +180,15 @@ export default function DetailProposalMahasiswa() {
         {/* MAIN */}
         <main className="flex-1 p-8">
 
-          {/* BACK BUTTON */}
+          {/* BACK */}
           <div className="flex items-center gap-4 mb-8">
-            <button 
-              onClick={() => router.back()}
+            <Link 
+              href="/dosen/mahasiswabimbingan" 
               className="w-10 h-10 bg-white border border-gray-200 rounded-xl flex items-center justify-center text-gray-500 hover:text-blue-600 hover:border-blue-200 transition-all shadow-sm"
             >
               <ArrowLeft size={20} />
-            </button>
+            </Link>
+
             <h1 className="text-xl font-bold text-gray-900">
               Detail Proposal Mahasiswa
             </h1>
@@ -170,18 +196,18 @@ export default function DetailProposalMahasiswa() {
 
           <div className="space-y-6">
 
-            {/* CARD MAHASISWA */}
+            {/* Card Info */}
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
               <div className="p-8 flex items-center gap-5">
-                <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center border-4 border-white shadow-sm shrink-0">
+                <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center border-4 border-white shadow-sm">
                   <User size={40} className="text-gray-300" />
                 </div>
                 <div>
                   <h2 className="text-xl font-bold text-gray-900">
-                    {proposal.user?.nama || "Tanpa Nama"}
+                    {proposal.user?.nama}
                   </h2>
                   <p className="text-gray-500 font-medium mt-1">
-                    {proposal.user?.npm || "-"}
+                    {proposal.user?.npm}
                   </p>
                 </div>
               </div>
@@ -190,26 +216,26 @@ export default function DetailProposalMahasiswa() {
                 <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
                   Judul Proposal
                 </h3>
-                <p className="text-lg font-bold text-gray-800 leading-relaxed">
+                <p className="text-lg font-bold text-gray-800">
                   {proposal.judul}
                 </p>
               </div>
             </div>
 
-            {/* CARD FILE */}
+            {/* File */}
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8">
               <h3 className="text-lg font-bold text-gray-900 mb-4">
                 File Proposal Mahasiswa
               </h3>
 
-              <div className="flex items-center justify-between p-4 border border-gray-200 rounded-xl bg-gray-50/50">
+              <div className="flex items-center justify-between p-4 border border-gray-200 rounded-xl">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 bg-red-50 text-red-500 rounded-lg flex items-center justify-center border border-red-100">
                     <FileText size={24} />
                   </div>
-                  <div className="overflow-hidden">
-                    <p className="text-sm font-bold text-gray-800 truncate max-w-md">
-                      {proposal.file_path ? proposal.file_path.split("/").pop() : "Tidak ada file"}
+                  <div>
+                    <p className="text-sm font-bold text-gray-800">
+                      {proposal.file_path?.split("/").pop()}
                     </p>
                     <p className="text-xs text-gray-400 font-medium">
                       PDF Document
@@ -219,46 +245,34 @@ export default function DetailProposalMahasiswa() {
 
                 <button
                   onClick={handleOpenPdf}
-                  disabled={openingPdf || !proposal.file_path}
-                  className="px-6 py-2.5 bg-[#345d8a] text-white text-xs font-bold rounded-lg hover:bg-[#2a4a6e] disabled:opacity-60 transition shadow-sm whitespace-nowrap"
+                  disabled={openingPdf}
+                  className="px-6 py-2.5 bg-[#345d8a] text-white text-xs font-bold rounded-lg hover:bg-[#2a4a6e] disabled:opacity-60"
                 >
                   {openingPdf ? "Membuka..." : "Lihat PDF"}
                 </button>
               </div>
             </div>
 
-            {/* STATUS INFO ONLY */}
-            {isAccepted ? (
-              // TAMPILAN JIKA SUDAH DITERIMA
-              <div className="bg-green-50 border border-green-200 rounded-xl p-6 flex items-start gap-4 shadow-sm">
-                <div className="p-2 bg-green-100 text-green-600 rounded-full shrink-0">
-                  <CheckCircle size={24} />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-green-800 mb-1">
-                    Mahasiswa sudah memiliki dosen pembimbing
-                  </h3>
-                  <p className="text-sm text-green-700">
-                    Proposal ini telah disetujui. Mahasiswa sedang dalam proses bimbingan.
-                  </p>
-                </div>
-              </div>
-            ) : (
-              // TAMPILAN BELUM ADA PEMBIMBING (HANYA INFO)
-              <div className="bg-gray-50 border border-gray-200 rounded-xl p-6 flex items-start gap-4 shadow-sm">
-                <div className="p-2 bg-gray-100 text-gray-500 rounded-full shrink-0">
-                  <Clock size={24} />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-gray-800 mb-1">
-                    Topik ini belum ada pembimbingnya
-                  </h3>
-                  <p className="text-sm text-gray-600">
-                    Mahasiswa masih menunggu persetujuan dosen pembimbing untuk proposal ini.
-                  </p>
-                </div>
-              </div>
-            )}
+            {/* ACTION */}
+            <div>
+              <button
+                onClick={handleApprove}
+                disabled={approving || proposal.status === "Diterima"}
+                className={`px-8 py-3 rounded-lg font-bold text-sm shadow-sm transition
+                  ${
+                    proposal.status === "Diterima"
+                      ? "bg-gray-300 text-gray-600 cursor-not-allowed"
+                      : "bg-[#78aca0] hover:bg-[#639186] text-white"
+                  }
+                `}
+              >
+                {proposal.status === "Diterima"
+                  ? "Sudah Disetujui"
+                  : approving
+                  ? "Memproses..."
+                  : "Setujui Proposal"}
+              </button>
+            </div>
 
           </div>
         </main>

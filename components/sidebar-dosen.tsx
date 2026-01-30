@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   LayoutDashboard,
   Users,
@@ -24,25 +24,41 @@ const OTHER_ITEMS = [
   { label: "Help", icon: HelpCircle, href: "/help" },
 ];
 
-export default function Sidebar() {
+export default function SidebarDosen() {
   const pathname = usePathname();
   const router = useRouter();
 
-  // ================= LOGOUT FUNCTION =================
+  const [nama, setNama] = useState("Loading...");
+  const [role, setRole] = useState("Dosen");
+
+  // ================= FETCH PROFILE =================
+  useEffect(() => {
+    const fetchProfile = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data } = await supabase
+        .from("profiles")
+        .select("nama, role")
+        .eq("id", user.id)
+        .single();
+
+      if (data) {
+        setNama(data.nama || "User");
+        setRole(data.role === "dosen" ? "Dosen" : data.role);
+      }
+    };
+
+    fetchProfile();
+  }, []);
+
+  // ================= LOGOUT =================
   const handleLogout = async () => {
-    const { error } = await supabase.auth.signOut();
-
-    if (error) {
-      alert("Gagal logout ❌");
-      console.error(error);
-      return;
-    }
-
-    // Redirect ke login setelah logout sukses
+    await supabase.auth.signOut();
     router.push("/login");
   };
 
-  // ================= ACTIVE MENU STYLE =================
+  // ================= ACTIVE MENU =================
   const getItemClass = (path: string) => {
     const isActive = pathname === path;
     return `
@@ -57,24 +73,26 @@ export default function Sidebar() {
 
   return (
     <aside className="w-72 bg-[#F3F5F9] border-r border-gray-200 h-screen flex flex-col sticky top-0 overflow-y-auto">
+      
       {/* ================= USER PROFILE ================= */}
       <div className="p-6 pb-2">
         <div className="flex items-center gap-3 mb-8">
           <div className="w-10 h-10 rounded-full bg-[#2B5F9E] flex items-center justify-center text-white font-bold text-lg">
-            G
+            {nama.charAt(0).toUpperCase()}
           </div>
           <div>
             <h3 className="text-sm font-bold text-gray-900">
-              Dr. Asep Sholahuddin, MT.
+              {nama}
             </h3>
-            <p className="text-xs text-blue-600 font-medium">Dosen</p>
+            <p className="text-xs text-blue-600 font-medium">
+              {role}
+            </p>
           </div>
         </div>
       </div>
 
       {/* ================= MENU ================= */}
       <div className="px-4 flex-1">
-        {/* Menu */}
         <div className="mb-6">
           <p className="px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
             Menu
@@ -94,7 +112,6 @@ export default function Sidebar() {
           </nav>
         </div>
 
-        {/* Others */}
         <div>
           <p className="px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
             Others
@@ -126,7 +143,6 @@ export default function Sidebar() {
             transition-all group
           "
         >
-          {/* Icon Box */}
           <div
             className="
               w-9 h-9 flex items-center justify-center
@@ -143,7 +159,6 @@ export default function Sidebar() {
           <span className="text-sm">Log out</span>
         </button>
 
-        {/* Version */}
         <p className="text-xs text-gray-400 mt-3 ml-12">V.1.0.0</p>
       </div>
     </aside>

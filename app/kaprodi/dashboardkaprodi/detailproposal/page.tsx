@@ -1,204 +1,296 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { 
   Search, 
   Bell, 
   User, 
   FileText, 
   ChevronDown, 
-  ArrowLeft 
+  ArrowLeft,
+  CheckCircle,
+  Trash2,
+  Download,
+  ShieldCheck,
+  Info
 } from "lucide-react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
 
-// --- MOCK DATA ---
-const STUDENT_DATA = {
-  id: "1",
-  name: "Vera Setiawati",
-  npm: "140810220013",
-  judul: "Analisis Sentimen Media Sosial untuk Pemilihan Umum",
-  file_name: "Proposal_Skripsi_Vera_Setiawati.pdf",
-  file_url: "#"
-};
+// --- TYPES (Tetap Sama) ---
+interface ProposalDetail {
+  id: string;
+  judul: string;
+  file_path: string | null;
+  user: {
+    nama: string | null;
+    npm: string | null;
+  } | null;
+}
 
-const DOSEN_LIST = [
-  { id: 1, nama: "Dr. Budi Santoso, M.Kom" },
-  { id: 2, nama: "Prof. Siti Aminah, M.T." },
-  { id: 3, nama: "Rizky Pratama, S.Kom., M.Kom." },
-  { id: 4, nama: "Dr. Akmal, S.Si" },
-];
+interface Dosen {
+  id: string;
+  nama: string;
+}
 
 export default function DetailProposalKaprodi() {
+  const searchParams = useSearchParams();
+  const proposalId = searchParams.get("id");
+
+  const [proposal, setProposal] = useState<ProposalDetail | null>(null);
+  const [fileUrl, setFileUrl] = useState<string | null>(null);
+  const [loadingPage, setLoadingPage] = useState(true);
+
   const [pembimbing1, setPembimbing1] = useState("");
   const [pembimbing2, setPembimbing2] = useState("");
   const [loading, setLoading] = useState(false);
+  const [isAssigned, setIsAssigned] = useState(false);
+  const [dosenList, setDosenList] = useState<Dosen[]>([]);
 
-  const handleTugaskan = () => {
-    if (!pembimbing1) {
-      alert("Harap pilih Pembimbing 1 terlebih dahulu.");
-      return;
-    }
-    if (pembimbing1 === pembimbing2) {
-      alert("Pembimbing 1 dan 2 tidak boleh sama.");
-      return;
-    }
+  // ================= FETCH DATA (Backend Logic Tetap) =================
+  useEffect(() => {
+    if (!proposalId) return;
+    const initData = async () => {
+      setLoadingPage(true);
+      try {
+        const { data: propData, error: propError } = await supabase
+          .from("proposals")
+          .select(`id, judul, file_path, user:profiles ( id, nama, npm )`)
+          .eq("id", proposalId).single();
 
-    setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      alert("✅ Dosen Pembimbing berhasil ditugaskan!");
-    }, 1500);
+        if (propError) throw propError;
+        setProposal(propData as ProposalDetail);
+
+        if (propData?.file_path) {
+          const { data: signed } = await supabase.storage
+            .from("proposals").createSignedUrl(propData.file_path, 3600);
+          setFileUrl(signed?.signedUrl ?? null);
+        }
+
+        const { data: dosenData } = await supabase
+          .from("profiles").select("id, nama")
+          .in("role", ["dosen", "kaprodi"]).order("nama");
+        setDosenList(dosenData || []);
+
+        const { data: supervisors } = await supabase
+          .from("thesis_supervisors").select("dosen_id, role")
+          .eq("proposal_id", proposalId);
+
+        if (supervisors && supervisors.length > 0) {
+          setIsAssigned(true);
+          const p1 = supervisors.find((s) => s.role === "utama");
+          const p2 = supervisors.find((s) => s.role === "pendamping"); 
+          if (p1) setPembimbing1(p1.dosen_id);
+          if (p2) setPembimbing2(p2.dosen_id);
+        } else {
+          const { data: recommendations } = await supabase
+            .from("proposal_recommendations").select("dosen_id, tipe")
+            .eq("proposal_id", proposalId);
+
+          if (recommendations && recommendations.length > 0) {
+            const reqP1 = recommendations.find((r) => r.tipe === "pembimbing1");
+            const reqP2 = recommendations.find((r) => r.tipe === "pembimbing2");
+            if (reqP1) setPembimbing1(reqP1.dosen_id);
+            if (reqP2) setPembimbing2(reqP2.dosen_id);
+          }
+        }
+      } catch (err) { console.error(err); } finally { setLoadingPage(false); }
+    };
+    initData();
+  }, [proposalId]);
+
+  // ================= ASSIGN DOSEN (Backend Logic Tetap) =================
+  const handleTugaskan = async () => {
+    if (!proposalId) return;
+    if (!pembimbing1) return alert("Pilih Pembimbing 1");
+    if (pembimbing1 === pembimbing2) return alert("Pembimbing tidak boleh sama");
+
+    try {
+      setLoading(true);
+      await supabase.from("thesis_supervisors").delete().eq("proposal_id", proposalId);
+      const payload = [{ proposal_id: proposalId, dosen_id: pembimbing1, role: "utama" }];
+      if (pembimbing2) payload.push({ proposal_id: proposalId, dosen_id: pembimbing2, role: "pendamping" });
+      
+      const { error } = await supabase.from("thesis_supervisors").insert(payload);
+      if (error) throw error;
+      await supabase.from("proposals").update({ status: "Menunggu Persetujuan Dosbing" }).eq("id", proposalId);
+
+      setIsAssigned(true);
+      alert("✅ Berhasil menugaskan dosen!");
+    } catch (err: any) { alert("Gagal: " + err.message); } finally { setLoading(false); }
   };
 
+  const handleReset = async () => {
+    if (!proposalId) return;
+    if (!window.confirm("Apakah Anda yakin ingin mereset dosen pembimbing?")) return;
+    try {
+      setLoading(true);
+      await supabase.from("thesis_supervisors").delete().eq("proposal_id", proposalId);
+      setIsAssigned(false);
+      setPembimbing1(""); setPembimbing2("");
+      alert("✅ Data pembimbing berhasil dihapus.");
+    } catch (err: any) { alert("Gagal menghapus: " + err.message); } finally { setLoading(false); }
+  };
+
+  if (loadingPage) return <div className="min-h-screen flex items-center justify-center bg-[#F4F7FE] text-slate-400 font-bold animate-pulse">Memuat Data...</div>;
+  if (!proposal) return <div className="min-h-screen flex items-center justify-center bg-[#F4F7FE] text-slate-500">Data tidak ditemukan.</div>;
+
   return (
-    // Struktur Layout Utama
-    // Asumsi: Sidebar sudah ada di layout.tsx dan memiliki width w-64 (256px)
-    // ml-64 digunakan agar konten tidak tertutup sidebar yang fixed
-    <div className="min-h-screen bg-[#F8F9FB] flex flex-col font-sans text-slate-700">
-      {/* --- HEADER --- */}
-      <header className="h-20 bg-white border-b border-gray-100 flex items-center justify-between px-8 sticky top-0 z-20">
-        <div className="relative w-96">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300" size={20} />
-          <input 
-            type="text" 
-            placeholder="Search" 
-            className="w-full pl-12 pr-4 py-2.5 bg-gray-50 border border-gray-100 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-100 transition-all"
-          />
+    <div className="min-h-screen bg-[#F4F7FE] flex flex-col font-sans text-slate-700">
+      
+      {/* HEADER - Glassmorphism Effect */}
+      <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20">
+        <div className="relative w-96 group">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={18} />
+          <input type="text" placeholder="Cari dokumen..." className="w-full pl-12 pr-4 py-2.5 bg-slate-100 border-transparent border focus:bg-white focus:border-blue-400 rounded-xl text-sm outline-none transition-all shadow-inner" />
         </div>
-
-        <div className="flex items-center gap-6">
-          <button className="relative p-2 hover:bg-gray-50 rounded-full transition-colors">
-            <Bell size={22} className="text-gray-400" />
-            <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
+        <div className="flex items-center gap-4">
+          <button className="p-2.5 text-slate-400 hover:bg-slate-100 rounded-xl transition-all relative">
+            <Bell size={22} />
+            <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
           </button>
-
-          <div className="flex items-center gap-3 pl-6 border-l border-gray-100">
-            <div className="text-right hidden md:block">
-            </div>
-          </div>
+          <div className="h-10 w-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold shadow-lg shadow-blue-200 ml-2 uppercase">K</div>
         </div>
       </header>
 
-      {/* --- MAIN CONTENT --- */}
-      <main className="flex-1 p-8">
+      <main className="flex-1 p-10 max-w-[1400px] mx-auto w-full">
         
-        {/* Title & Back Button */}
-        <div className="flex items-center gap-4 mb-8">
-          <Link 
-            // Pastikan path ini sesuai dengan route halaman list proposal Anda
-            href="/kaprodi/dashboardkaprodi/aksesproposal" 
-            className="w-10 h-10 bg-white border border-gray-200 rounded-xl flex items-center justify-center text-gray-500 hover:text-blue-600 hover:border-blue-200 transition-all shadow-sm"
-          >
-            <ArrowLeft size={20} />
+        {/* Navigation */}
+        <div className="flex items-center gap-5 mb-10">
+          <Link href="/kaprodi/dashboardkaprodi/aksesproposal" className="w-12 h-12 bg-white border border-slate-200 rounded-2xl flex items-center justify-center text-slate-500 hover:text-blue-600 hover:border-blue-100 transition-all shadow-sm active:scale-95">
+            <ArrowLeft size={24} />
           </Link>
-          <h1 className="text-xl font-bold text-gray-900">Detail Proposal Mahasiswa</h1>
+          <div>
+            <h1 className="text-3xl font-black text-slate-800 tracking-tight">Review Proposal Mahasiswa</h1>
+            <p className="text-slate-500 font-medium">Lakukan verifikasi berkas dan penugasan dosen pembimbing.</p>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
           
-          {/* KOLOM KIRI (Detail Mahasiswa & File) */}
-          <div className="lg:col-span-2 space-y-6">
+          {/* KOLOM KIRI (8/12) */}
+          <div className="lg:col-span-8 space-y-8">
             
-            {/* Card Info Mahasiswa */}
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-              <div className="p-8">
-                <div className="flex items-center gap-5">
-                  <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center border-4 border-white shadow-sm overflow-hidden">
-                    <User size={40} className="text-gray-300" />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-bold text-gray-900">{STUDENT_DATA.name}</h2>
-                    <p className="text-gray-500 font-medium mt-1">{STUDENT_DATA.npm}</p>
-                  </div>
+            {/* Info Mahasiswa Card */}
+            <div className="bg-white rounded-[2.5rem] border border-white shadow-xl shadow-slate-200/50 overflow-hidden relative group">
+              <div className="absolute top-0 right-0 p-10 opacity-[0.03] group-hover:opacity-[0.05] transition-opacity">
+                <User size={180} />
+              </div>
+              <div className="p-10 flex items-center gap-8 relative z-10">
+                <div className="w-28 h-28 bg-slate-100 rounded-[2.5rem] flex items-center justify-center border-4 border-white shadow-xl overflow-hidden shrink-0">
+                  <User size={56} className="text-slate-300" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-black text-slate-800 tracking-tight uppercase leading-none">{proposal.user?.nama ?? "Tanpa Nama"}</h2>
+                  <p className="text-blue-600 font-black tracking-[0.15em] text-xs mt-3 bg-blue-50 px-4 py-1.5 rounded-full border border-blue-100 w-fit">
+                    {proposal.user?.npm ?? "-"}
+                  </p>
                 </div>
               </div>
-              
-              {/* Bagian Judul (Background Abu) */}
-              <div className="px-8 py-6 bg-gray-50 border-t border-gray-100">
-                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Judul Proposal</h3>
-                <p className="text-lg font-bold text-gray-800 leading-relaxed">
-                  {STUDENT_DATA.judul}
-                </p>
+              <div className="px-10 py-8 bg-slate-50/50 border-t border-slate-100">
+                <div className="flex items-center gap-2 mb-3">
+                   <Info size={16} className="text-slate-400" />
+                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Judul Usulan Skripsi</p>
+                </div>
+                <p className="text-xl font-bold text-slate-700 leading-relaxed italic">"{proposal.judul}"</p>
               </div>
             </div>
 
-            {/* Card File Proposal */}
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8">
-              <h3 className="text-lg font-bold text-gray-900 mb-4">File Proposal Mahasiswa</h3>
-              
-              <div className="flex items-center justify-between p-4 border border-gray-200 rounded-xl hover:border-blue-200 transition-colors bg-white">
-                <div className="flex items-center gap-4 overflow-hidden">
-                  <div className="w-12 h-12 bg-red-50 text-red-500 rounded-lg flex items-center justify-center shrink-0 border border-red-100">
-                    <FileText size={24} />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-bold text-gray-800 truncate pr-4">{STUDENT_DATA.file_name}</p>
-                    <p className="text-xs text-gray-400 font-medium">PDF Document</p>
-                  </div>
+            {/* Document Preview Card */}
+            <div className="bg-white rounded-[2.5rem] border border-white shadow-xl shadow-slate-200/50 p-10">
+              <div className="flex items-center gap-3 mb-8">
+                <div className="p-2.5 bg-blue-600 rounded-xl text-white shadow-lg shadow-blue-200">
+                   <FileText size={20} />
                 </div>
-                
-                <button className="px-6 py-2.5 bg-[#345d8a] text-white text-xs font-bold rounded-lg hover:bg-[#2a4a6e] transition-colors shadow-sm whitespace-nowrap">
-                  Lihat PDF
-                </button>
+                <h3 className="text-lg font-black text-slate-800 uppercase tracking-tighter text-[13px]">Dokumen Pendukung</h3>
+              </div>
+              <div className="bg-slate-50 rounded-[2rem] border border-slate-100 p-8 flex flex-col items-center justify-center text-center group hover:bg-white hover:border-blue-100 transition-all duration-300 shadow-inner hover:shadow-xl">
+                <div className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center text-red-500 shadow-sm mb-6 group-hover:scale-110 transition-transform">
+                  <FileText size={40} />
+                </div>
+                <p className="text-sm font-black text-slate-700 mb-2 truncate max-w-md uppercase tracking-tight">{proposal.file_path?.split('/').pop() ?? "file_proposal.pdf"}</p>
+                <p className="text-xs text-slate-400 font-bold mb-8 uppercase tracking-widest tracking-tighter">Format PDF • Ukuran Berkas Terlampir</p>
+                <a href={fileUrl ?? "#"} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 px-10 py-4 bg-slate-900 text-white text-xs font-black rounded-2xl hover:bg-blue-600 transition-all shadow-lg active:scale-95 uppercase tracking-widest">
+                  <Download size={18} /> Lihat Dokumen Lengkap
+                </a>
               </div>
             </div>
-
           </div>
 
-          {/* KOLOM KANAN (Form Assign Dosen) */}
-          <div className="lg:col-span-1">
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 sticky top-24">
-              <h2 className="text-lg font-bold text-gray-900 mb-6 pb-4 border-b border-gray-100">
-                Pilih Dosen Pembimbing
-              </h2>
-
-              <div className="space-y-6">
-                {/* Input Pembimbing 1 */}
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">Pembimbing 1</label>
-                  <div className="relative">
-                    <select 
-                      value={pembimbing1}
-                      onChange={(e) => setPembimbing1(e.target.value)}
-                      className="w-full appearance-none bg-white border border-gray-300 text-gray-700 py-3 px-4 pr-10 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 font-medium text-sm cursor-pointer transition-all hover:border-gray-400"
-                    >
-                      <option value="">-- Pilih Dosen Pembimbing 1 --</option>
-                      {DOSEN_LIST.map((d) => (
-                        <option key={d.id} value={d.id}>{d.nama}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
-                  </div>
+          {/* KOLOM KANAN (4/12) */}
+          <div className="lg:col-span-4">
+            <div className="bg-white rounded-[2.5rem] border border-white shadow-2xl shadow-slate-200/60 p-8 sticky top-28 overflow-hidden relative">
+              
+              <div className="flex items-center gap-3 mb-10 pb-6 border-b border-slate-50">
+                <div className="p-2.5 bg-indigo-600 rounded-xl text-white shadow-lg shadow-indigo-200">
+                  <ShieldCheck size={20} />
                 </div>
-
-                {/* Input Pembimbing 2 */}
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">Pembimbing 2</label>
-                  <div className="relative">
-                    <select 
-                      value={pembimbing2}
-                      onChange={(e) => setPembimbing2(e.target.value)}
-                      className="w-full appearance-none bg-white border border-gray-300 text-gray-700 py-3 px-4 pr-10 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 font-medium text-sm cursor-pointer transition-all hover:border-gray-400"
-                    >
-                      <option value="">-- Pilih Dosen Pembimbing 2 --</option>
-                      {DOSEN_LIST.map((d) => (
-                        <option key={d.id} value={d.id}>{d.nama}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
-                  </div>
-                </div>
-
-                {/* Submit Button */}
-                <button 
-                  onClick={handleTugaskan}
-                  disabled={loading}
-                  className="w-full py-3.5 bg-[#345d8a] text-white font-bold rounded-xl hover:bg-[#2a4a6e] transition-all shadow-md hover:shadow-lg active:scale-95 text-sm disabled:opacity-70 disabled:cursor-not-allowed mt-2"
-                >
-                  {loading ? "Memproses..." : "Tugaskan Dosen Pembimbing"}
-                </button>
+                <h2 className="text-sm font-black text-slate-800 uppercase tracking-tighter">Penugasan Dosen</h2>
               </div>
 
+              {/* Status Badge */}
+              {isAssigned && (
+                <div className="mb-8 p-5 bg-green-50 border border-green-100 rounded-3xl flex items-start gap-4 animate-in fade-in slide-in-from-top-4 duration-500">
+                  <CheckCircle className="text-green-600 shrink-0 mt-1" size={20} />
+                  <div>
+                    <p className="text-xs font-black text-green-800 uppercase tracking-tight">Status: Ditugaskan</p>
+                    <p className="text-[11px] text-green-700/80 mt-1 font-medium leading-relaxed">Dosen pembimbing telah ditetapkan secara resmi dalam sistem.</p>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-8">
+                {/* Select Fields */}
+                {[
+                  { label: "Pembimbing Utama", state: pembimbing1, setState: setPembimbing1 },
+                  { label: "Pembimbing Pendamping", state: pembimbing2, setState: setPembimbing2 }
+                ].map((item, idx) => (
+                  <div key={idx}>
+                    <label className="block text-[10px] font-black text-slate-400 mb-2 uppercase tracking-widest ml-1">{item.label}</label>
+                    <div className="relative group">
+                      <select 
+                        value={item.state}
+                        onChange={(e) => item.setState(e.target.value)}
+                        disabled={isAssigned} 
+                        className="w-full appearance-none bg-slate-50 border border-slate-200 text-slate-700 py-4 px-5 pr-12 rounded-2xl focus:ring-4 focus:ring-blue-50 focus:border-blue-400 outline-none font-bold text-sm disabled:bg-white disabled:text-slate-400 transition-all cursor-pointer shadow-inner"
+                      >
+                        <option value="">-- PILIH DOSEN --</option>
+                        {dosenList.map((d) => (
+                          <option key={d.id} value={d.id}>{d.nama}</option>
+                        ))}
+                      </select>
+                      {!isAssigned && (
+                        <ChevronDown className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none group-focus-within:text-blue-500 transition-colors" size={18} />
+                      )}
+                    </div>
+                  </div>
+                ))}
+
+                {/* Buttons */}
+                {!isAssigned ? (
+                  <button 
+                    onClick={handleTugaskan}
+                    disabled={loading}
+                    className="w-full py-5 bg-blue-600 text-white font-black rounded-2xl hover:bg-blue-700 transition-all shadow-xl shadow-blue-100 active:scale-95 text-xs uppercase tracking-[0.15em] disabled:opacity-50 mt-4"
+                  >
+                    {loading ? "Memproses..." : "Konfirmasi Penugasan"}
+                  </button>
+                ) : (
+                  <button 
+                    onClick={handleReset}
+                    disabled={loading}
+                    className="w-full py-5 bg-red-50 text-red-600 border border-red-100 font-black rounded-2xl hover:bg-red-100 transition-all active:scale-95 text-xs flex items-center justify-center gap-3 uppercase tracking-widest mt-4 shadow-sm"
+                  >
+                    {loading ? "Menghapus..." : (
+                      <>
+                        <Trash2 size={18} />
+                        Reset Data Dosen
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 

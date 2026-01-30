@@ -1,273 +1,268 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import Sidebar from "@/components/sidebar";
-import { Bell, Search, User, Trash2, LogOut } from "lucide-react";
+// ShieldLock diganti menjadi ShieldCheck
+import { Bell, Search, Trash2, LogOut, Check, User, ShieldCheck, AlertCircle, Phone, Mail, IdCard, Lock } from "lucide-react"; 
 import { supabase } from "@/lib/supabaseClient";
+import { useRouter } from "next/navigation";
 
-// ---------------- TYPES ----------------
+// --- IMPORT SIDEBARS ---
+import SidebarDosen from "@/components/sidebar-dosen";
+import SidebarTendik from "@/components/sidebar-tendik";
+import SidebarKaprodi from "@/components/sidebar-kaprodi";
+import SidebarMahasiswa from "@/components/sidebar";
 
+// --- TYPES ---
 interface ProfileForm {
   nama: string;
-  npm: string;
+  npm_nip: string;
   email: string;
   phone: string;
+  role: string;
 }
-
-// ---------------- PAGE ----------------
+const NEED_ML_64 = ["mahasiswa", "kaprodi", "tendik", "dosen"] as const;
 
 export default function SettingsPage() {
+  const router = useRouter();
+
   const [form, setForm] = useState<ProfileForm>({
     nama: "",
-    npm: "",
+    npm_nip: "",
     email: "",
     phone: "",
+    role: "",
   });
 
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [savingPass, setSavingPass] = useState(false);
 
-  // -------- LOAD PROFILE --------
   useEffect(() => {
     const loadProfile = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) return;
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        router.push("/login");
+        return;
+      }
 
       const { data, error } = await supabase
         .from("profiles")
-        .select("nama, npm, email, phone")
+        .select("*")
         .eq("id", user.id)
         .single();
 
       if (!error && data) {
         setForm({
           nama: data.nama ?? "",
-          npm: data.npm ?? "",
+          npm_nip: data.npm || data.nip || "",
           email: data.email ?? user.email ?? "",
           phone: data.phone ?? "",
+          role: data.role ?? "mahasiswa",
         });
       }
-
       setLoading(false);
     };
-
     loadProfile();
-  }, []);
+  }, [router]);
 
-  // -------- UPDATE FORM FIELD --------
   const updateField = (key: keyof ProfileForm, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  // -------- SAVE PROFILE --------
-  const handleSave = async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+  const handleSaveProfile = async () => {
+    setSaving(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const payload: any = { nama: form.nama, phone: form.phone };
+      if (form.role === "mahasiswa") payload.npm = form.npm_nip;
+      else payload.nip = form.npm_nip;
 
-    if (!user) return;
-
-    const { error } = await supabase
-      .from("profiles")
-      .update({
-        nama: form.nama,
-        npm: form.npm,
-        phone: form.phone,
-      })
-      .eq("id", user.id);
-
-    if (!error) {
-      // Optional: sync name to auth metadata
-      await supabase.auth.updateUser({
-        data: {
-          full_name: form.nama,
-        },
-      });
-
-      alert("Profil berhasil diperbarui ✅");
-    } else {
-      alert("Gagal menyimpan profil ❌");
+      const { error } = await supabase.from("profiles").update(payload).eq("id", user.id);
+      if (error) throw error;
+      alert("✅ Profil berhasil diperbarui");
+    } catch (err: any) {
+      alert("❌ Gagal update profil: " + err.message);
+    } finally {
+      setSaving(false);
     }
   };
 
-  if (loading) return null;
+  const handleChangePassword = async () => {
+    if (!password || !confirmPassword) return alert("⚠️ Harap isi kedua kolom kata sandi.");
+    if (password !== confirmPassword) return alert("⚠️ Kata sandi tidak cocok.");
+    if (password.length < 6) return alert("⚠️ Kata sandi minimal 6 karakter.");
+
+    setSavingPass(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) throw error;
+      alert("✅ Kata sandi berhasil diubah!");
+      setPassword("");
+      setConfirmPassword("");
+    } catch (err: any) {
+      alert("❌ Gagal ubah sandi: " + err.message);
+    } finally {
+      setSavingPass(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.push("/login");
+  };
+
+  const renderSidebar = () => {
+    switch (form.role) {
+      case "dosen": return <SidebarDosen />;
+      case "tendik": return <SidebarTendik />;
+      case "kaprodi": return <SidebarKaprodi />;
+      default: return <SidebarMahasiswa />;
+    }
+  };
+
+  if (loading) return <div className="flex h-screen items-center justify-center text-slate-400 font-bold animate-pulse uppercase tracking-widest">Loading Settings...</div>;
 
   return (
-    <div className="flex min-h-screen bg-[#f8f9fa] font-sans text-slate-700">
-      {/* SIDEBAR */}
-      <Sidebar />
+    <div className="flex min-h-screen bg-[#F4F7FE] font-sans text-slate-700">
+      {renderSidebar()}
 
-      {/* MAIN CONTENT */}
-      <main className="flex-1 ml-64 min-h-screen">
-        {/* HEADER */}
-        <header className="h-16 bg-white border-b border-gray-100 flex items-center justify-between px-8 sticky top-0 z-20">
-          <div className="relative w-96">
-            <Search
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300"
-              size={18}
-            />
-            <input
-              type="text"
-              placeholder="Search"
-              className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
-            />
+      <main className={`flex-1 min-h-screen flex flex-col ${NEED_ML_64.includes(form.role as any) ? "ml-64" : ""}`}>
+        
+        {/* HEADER - Glassmorphism */}
+        <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shadow-sm">
+          <div className="relative w-96 group">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={18} />
+            <input type="text" placeholder="Cari pengaturan..." className="w-full pl-12 pr-4 py-2.5 bg-slate-100 border-transparent border focus:bg-white focus:border-blue-400 rounded-xl text-sm outline-none transition-all shadow-inner" />
           </div>
-          <button className="text-gray-400 hover:text-blue-600 transition">
-            <Bell size={20} />
-          </button>
+          <div className="flex items-center gap-4">
+                               <button className="p-2.5 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors relative">
+                                 <Bell size={20} className="text-slate-600" />
+                                 <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
+                               </button>
+          </div>
         </header>
 
-        <div className="p-8 max-w-[1200px]">
-          <h1 className="text-xl font-bold text-gray-800 mb-6">
-            Pengaturan
-          </h1>
+        <div className="p-10 max-w-7xl mx-auto w-full">
+          <header className="mb-10">
+            <h1 className="text-3xl font-black text-slate-800 tracking-tight">Pengaturan Akun</h1>
+            <p className="text-slate-500 font-medium mt-1">Kelola informasi profil dan keamanan akun Anda dalam satu tempat.</p>
+          </header>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* LEFT */}
-            <div className="lg:col-span-2 space-y-8">
-              {/* PROFILE */}
-              <section className="bg-white p-8 rounded-2xl border border-gray-100 shadow-sm">
-                <h2 className="text-lg font-bold text-gray-800 mb-6">
-                  Profil Pengguna
-                </h2>
-
-                <div className="flex items-center gap-6 mb-8">
-                  <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center overflow-hidden border border-gray-100">
-                    <User size={40} className="text-slate-300" />
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+            
+            <div className="lg:col-span-8 space-y-10">
+              
+              {/* SECTION: PROFIL PENGGUNA */}
+              <section className="bg-white rounded-[2.5rem] border border-white shadow-xl shadow-slate-200/50 overflow-hidden">
+                <div className="p-8 border-b border-slate-50 bg-slate-50/30 flex items-center gap-3">
+                  <div className="p-2.5 bg-blue-600 rounded-xl text-white shadow-lg shadow-blue-200">
+                    <User size={20} />
                   </div>
-                  <div>
-                    <p className="text-lg font-bold text-gray-800 leading-none">
-                      {form.nama || "-"}
-                    </p>
-                    <p className="text-sm font-semibold text-gray-400 mt-1">
-                      {form.npm || "-"}
-                    </p>
-                  </div>
+                  <h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Profil Pengguna</h2>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                  <InputGroup
-                    label="Nama"
-                    value={form.nama}
-                    onChange={(v) => updateField("nama", v)}
-                  />
-                  <InputGroup
-                    label="NPM"
-                    value={form.npm}
-                    onChange={(v) => updateField("npm", v)}
-                  />
-                  <InputGroup
-                    label="Email"
-                    value={form.email}
-                    disabled
-                    onChange={(v) => updateField("email", v)}
-                  />
-                  <InputGroup
-                    label="No. Telepon" 
-                    value={form.phone}
-                    onChange={(v) => updateField("phone", v)}
-                  />
-                </div>
-
-                <div className="flex justify-end">
-                  <button
-                    onClick={handleSave}
-                    className="bg-[#4a729b] text-white px-6 py-2.5 rounded-lg text-sm font-bold shadow-sm hover:bg-[#3d5e80] transition active:scale-95"
-                  >
-                    Simpan Perubahan
-                  </button>
-                </div>
-
-                {/* CHANGE PASSWORD */}
-                <div className="mt-12 pt-8 border-t border-gray-50">
-                  <h3 className="text-md font-bold text-gray-800 mb-6">
-                    Ganti Kata Sandi
-                  </h3>
-                  <div className="space-y-4 max-w-lg">
-                    <input
-                      type="password"
-                      placeholder="Kata Sandi Saat Ini"
-                      className="w-full border border-gray-200 rounded-lg p-3 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
-                    />
-                    <input
-                      type="password"
-                      placeholder="Kata Sandi Baru"
-                      className="w-full border border-gray-200 rounded-lg p-3 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
-                    />
-                    <input
-                      type="password"
-                      placeholder="Konfirmasi Kata Sandi Baru"
-                      className="w-full border border-gray-200 rounded-lg p-3 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
-                    />
+                <div className="p-10">
+                  <div className="flex items-center gap-8 mb-10">
+                    <div className="w-24 h-24 bg-blue-50 rounded-[2rem] flex items-center justify-center border-4 border-white shadow-xl text-blue-600 font-black text-3xl shrink-0">
+                      {form.nama.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <h3 className="text-2xl font-black text-slate-800 leading-none uppercase tracking-tight">{form.nama || "User"}</h3>
+                      <p className="text-blue-600 font-black tracking-[0.15em] text-[10px] mt-3 bg-blue-50 px-4 py-1.5 rounded-full border border-blue-100 w-fit uppercase">
+                        {form.role}
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex justify-end mt-6">
-                    <button className="bg-[#4a729b] text-white px-6 py-2.5 rounded-lg text-sm font-bold shadow-sm hover:bg-[#3d5e80] transition active:scale-95">
-                      Ubah Sandi
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <InputGroup label="Nama Lengkap" icon={<User size={16}/>} value={form.nama} onChange={(v) => updateField("nama", v)} />
+                    <InputGroup label={form.role === "mahasiswa" ? "NPM" : "NIP / NIDN"} icon={<IdCard size={16}/>} value={form.npm_nip} onChange={(v) => updateField("npm_nip", v)} />
+                    <InputGroup label="Email Institusi" icon={<Mail size={16}/>} value={form.email} disabled onChange={() => {}} />
+                    <InputGroup label="Nomor WhatsApp" icon={<Phone size={16}/>} value={form.phone} onChange={(v) => updateField("phone", v)} placeholder="0812xxxx" />
+                  </div>
+
+                  <div className="flex justify-end mt-10 pt-8 border-t border-slate-50">
+                    <button
+                      onClick={handleSaveProfile}
+                      disabled={saving}
+                      className="flex items-center gap-3 bg-slate-900 hover:bg-blue-600 text-white px-10 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl transition-all active:scale-95 disabled:opacity-70"
+                    >
+                      {saving ? "Memproses..." : <><Check size={18} /> Simpan Profil</>}
                     </button>
                   </div>
                 </div>
               </section>
+
+              {/* SECTION: GANTI KATA SANDI */}
+              <section className="bg-white rounded-[2.5rem] border border-white shadow-xl shadow-slate-200/50 overflow-hidden">
+                <div className="p-8 border-b border-slate-50 bg-slate-50/30 flex items-center gap-3">
+                  <div className="p-2.5 bg-indigo-600 rounded-xl text-white shadow-lg shadow-indigo-200">
+                    <Lock size={20} />
+                  </div>
+                  <h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Keamanan</h2>
+                </div>
+
+                <div className="p-10">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+                    <InputGroup label="Kata Sandi Baru" type="password" value={password} onChange={setPassword} placeholder="••••••••" />
+                    <InputGroup label="Konfirmasi Sandi" type="password" value={confirmPassword} onChange={setConfirmPassword} placeholder="••••••••" />
+                  </div>
+
+                  <div className="p-6 bg-indigo-50 border border-indigo-100 rounded-2xl flex gap-4">
+                    <AlertCircle className="text-indigo-400 shrink-0" size={20} />
+                    <p className="text-[11px] font-medium text-indigo-700 leading-relaxed italic">
+                      Gunakan minimal 6 karakter kombinasi angka dan huruf untuk keamanan yang lebih baik.
+                    </p>
+                  </div>
+
+                  <div className="flex justify-end mt-10">
+                    <button
+                      onClick={handleChangePassword}
+                      disabled={savingPass}
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white px-10 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-indigo-100 transition-all active:scale-95 disabled:opacity-70"
+                    >
+                      {savingPass ? "Memproses..." : "Ubah Kata Sandi"}
+                    </button>
+                  </div>
+                </div>
+              </section>
+
             </div>
 
-            {/* RIGHT */}
-            <div className="space-y-8">
-              {/* PREFERENCES */}
-              <section className="bg-white p-8 rounded-2xl border border-gray-100 shadow-sm">
-                <h2 className="text-lg font-bold text-gray-800 mb-6">
-                  Preferensi Sistem
-                </h2>
-
-                <div className="space-y-6">
-                  <div>
-                    <p className="text-sm font-bold text-gray-800 mb-4">
-                      Tema
-                    </p>
-                    <div className="flex gap-6">
-                      <RadioGroup label="Terang" name="theme" defaultChecked />
-                      <RadioGroup label="Gelap" name="theme" />
+            <div className="lg:col-span-4 space-y-10">
+              <section className="bg-white rounded-[2.5rem] border border-white shadow-xl shadow-slate-200/50 p-8">
+                <h2 className="text-sm font-black text-slate-800 uppercase tracking-widest mb-8">Akses Akun</h2>
+                <div className="space-y-4">
+                  <button
+                    onClick={handleLogout}
+                    className="w-full flex items-center justify-between p-5 text-slate-600 font-bold hover:bg-red-50 hover:text-red-600 rounded-2xl border border-transparent hover:border-red-100 transition-all group"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="p-2 bg-slate-50 group-hover:bg-red-100 rounded-lg transition-colors"><LogOut size={18} /></div>
+                      <span className="text-xs uppercase tracking-widest font-black">Keluar</span>
                     </div>
-                  </div>
-
-                  <div>
-                    <p className="text-sm font-bold text-gray-800 mb-4">
-                      Bahasa
-                    </p>
-                    <div className="flex gap-6">
-                      <RadioGroup
-                        label="Indonesia"
-                        name="lang"
-                        defaultChecked
-                      />
-                      <RadioGroup label="Inggris" name="lang" />
-                    </div>
-                  </div>
-                </div>
-              </section>
-
-              {/* ACCOUNT */}
-              <section className="bg-white p-8 rounded-2xl border border-gray-100 shadow-sm">
-                <h2 className="text-lg font-bold text-gray-800 mb-6">
-                  Manajemen Akun
-                </h2>
-
-                <div className="space-y-3">
-                  <button className="w-full flex items-center gap-3 p-2.5 text-gray-800 font-bold hover:bg-red-50 hover:text-red-600 rounded-xl transition group">
-                    <div className="bg-red-500 p-2 rounded-lg text-white shadow-sm group-hover:bg-red-600">
-                      <LogOut size={16} />
-                    </div>
-                    <span>Logout</span>
                   </button>
 
-                  <button className="w-full flex items-center gap-3 p-2.5 text-gray-800 font-bold hover:bg-red-50 hover:text-red-600 rounded-xl transition group">
-                    <div className="bg-red-500 p-2 rounded-lg text-white shadow-sm group-hover:bg-red-600">
-                      <Trash2 size={16} />
+                  <button className="w-full flex items-center justify-between p-5 text-slate-400 font-bold hover:bg-red-50 hover:text-red-600 rounded-2xl border border-transparent hover:border-red-100 transition-all group">
+                    <div className="flex items-center gap-4">
+                      <div className="p-2 bg-slate-50 group-hover:bg-red-100 rounded-lg transition-colors"><Trash2 size={18} /></div>
+                      <span className="text-xs uppercase tracking-widest font-black">Hapus Akun</span>
                     </div>
-                    <span>Hapus Akun</span>
                   </button>
                 </div>
               </section>
+
+              <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white relative overflow-hidden shadow-2xl">
+                 <div className="relative z-10">
+                    <p className="text-[10px] font-black opacity-50 uppercase tracking-[0.2em] mb-4 text-blue-400">Pusat Bantuan</p>
+                    <h4 className="text-lg font-bold mb-2">Butuh Bantuan?</h4>
+                    <p className="text-[11px] opacity-70 leading-relaxed font-medium">Jika Anda mengalami kendala teknis terkait pengaturan akun, silakan hubungi Tenaga Kependidikan Prodi.</p>
+                 </div>
+                 <User className="absolute -right-6 -bottom-6 text-white opacity-5 w-32 h-32" />
+              </div>
             </div>
           </div>
         </div>
@@ -276,55 +271,41 @@ export default function SettingsPage() {
   );
 }
 
-// ---------------- SUB COMPONENTS ----------------
-
+// ================= SUB COMPONENT =================
 function InputGroup({
   label,
   value,
   onChange,
   disabled,
+  placeholder,
+  icon,
+  type = "text",
 }: {
   label: string;
   value?: string;
   disabled?: boolean;
+  placeholder?: string;
+  icon?: React.ReactNode;
+  type?: string;
   onChange: (v: string) => void;
 }) {
   return (
-    <div className="space-y-2">
-      <label className="text-sm font-bold text-gray-700">{label}</label>
-      <input
-        type="text"
-        value={value}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.value)}
-        className={`w-full border border-gray-200 rounded-lg p-3 text-sm 
-          focus:outline-none focus:ring-1 focus:ring-blue-400 transition 
-          ${disabled ? "bg-gray-100 text-gray-400" : "bg-gray-50/30"}`}
-      />
+    <div className="space-y-3">
+      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">{label}</label>
+      <div className="relative group">
+        {icon && <div className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${disabled ? 'text-slate-300' : 'text-slate-400 group-focus-within:text-blue-500'}`}>{icon}</div>}
+        <input
+          type={type}
+          value={value}
+          disabled={disabled}
+          placeholder={placeholder}
+          onChange={(e) => onChange(e.target.value)}
+          className={`w-full ${icon ? 'pl-11' : 'px-5'} py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold transition-all outline-none shadow-inner
+            ${disabled
+              ? "bg-white text-slate-300 cursor-not-allowed border-slate-100"
+              : "hover:border-slate-300 focus:bg-white focus:border-blue-400 focus:ring-4 focus:ring-blue-50"}`}
+        />
+      </div>
     </div>
-  );
-}
-
-function RadioGroup({
-  label,
-  name,
-  defaultChecked = false,
-}: {
-  label: string;
-  name: string;
-  defaultChecked?: boolean;
-}) {
-  return (
-    <label className="flex items-center gap-3 cursor-pointer group">
-      <input
-        type="radio"
-        name={name}
-        defaultChecked={defaultChecked}
-        className="w-4 h-4 border-gray-300 text-blue-600 focus:ring-blue-500 accent-blue-600"
-      />
-      <span className="text-sm font-bold text-gray-700 group-hover:text-blue-600 transition">
-        {label}
-      </span>
-    </label>
   );
 }

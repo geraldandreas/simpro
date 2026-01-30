@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import SidebarTendik from '@/components/sidebar-tendik'; // Pastikan path ini sesuai lokasi file sidebar Anda
+import SidebarTendik from '@/components/sidebar-tendik';
+import { supabase } from "@/lib/supabaseClient";
 import { 
   FileUp, 
   FileText, 
@@ -13,10 +14,13 @@ import {
   Eye, 
   Download, 
   CheckCircle, 
-  XCircle
+  XCircle,
+  Calendar,
+  Users,
+  ChevronRight
 } from 'lucide-react';
 
-// --- TYPES ---
+// --- TYPES (Tetap Sama) ---
 interface StatCardProps {
   icon: React.ReactNode;
   count: number;
@@ -34,33 +38,59 @@ interface StudentTask {
 }
 
 interface VerificationItem {
-  id: number;
-  name: string;
-  task: string;
-  date: string;
+  id: string;
+  nama_dokumen: string;
+  file_url: string;
+  created_at: string;
+  proposal: {
+    user: {
+      nama: string;
+    } | null;
+  } | null;
 }
 
-// --- MAIN COMPONENT ---
+const DOC_LABEL: Record<string, string> = {
+  berita_acara_bimbingan: "Berita Acara Bimbingan",
+  transkrip_nilai: "Transkrip Nilai",
+  matriks_perbaikan: "Matriks Perbaikan",
+  toefl: "Sertifikat TOEFL",
+  print_jurnal: "Print Jurnal",
+  sertifikat_publikasi: "Sertifikat Publikasi",
+  test_manual: "Dokumen Manual",
+};
+
 export default function DashboardTendik() {
-  // State untuk melacak ID baris mana yang dropdown-nya sedang terbuka
-  const [activeDropdownId, setActiveDropdownId] = useState<number | null>(null);
+  const [activeDropdownId, setActiveDropdownId] = useState<string | null>(null);
+  const [verificationData, setVerificationData] = useState<VerificationItem[]>([]);
+  const [loadingVerification, setLoadingVerification] = useState(true);
 
-  // Data Dummy untuk Verifikasi
-  const verificationData: VerificationItem[] = [
-    { id: 1, name: "Gerald Christopher", task: "Unggah Berita Acara Bimbingan", date: "18 April 2026" },
-    { id: 2, name: "Vera Setiawati", task: "Unggah Berita Acara Bimbingan", date: "19 April 2026" },
-  ];
+  const fetchVerification = async () => {
+    try {
+      setLoadingVerification(true);
+      const { data, error } = await supabase
+        .from("seminar_documents")
+        .select(`
+          id, nama_dokumen, file_url, created_at,
+          proposal:proposal_id ( user:user_id ( nama ) )
+        `)
+        .eq("status", "Menunggu Verifikasi")
+        .order("created_at", { ascending: false });
 
-  // Handler untuk toggle dropdown
-  const toggleDropdown = (id: number) => {
-    if (activeDropdownId === id) {
-      setActiveDropdownId(null); // Tutup jika diklik lagi
-    } else {
-      setActiveDropdownId(id); // Buka yang baru
+      if (error) throw error;
+      setVerificationData((data ?? []) as VerificationItem[]);
+    } catch (err) {
+      console.error("❌ Gagal fetch verifikasi:", err);
+    } finally {
+      setLoadingVerification(false);
     }
   };
 
-  // Handler untuk menutup dropdown ketika klik di luar area
+  useEffect(() => { fetchVerification(); }, []);
+
+  const toggleDropdown = (id: string) => {
+    setActiveDropdownId(activeDropdownId === id ? null : id);
+  };
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if ((event.target as HTMLElement).closest('.verification-menu-container') === null) {
@@ -72,94 +102,90 @@ export default function DashboardTendik() {
   }, []);
 
   return (
-    <div className="flex min-h-screen bg-[#f8f9fa] font-sans text-slate-700">
-      
-      {/* 1. IMPORT SIDEBAR COMPONENT */}
+    <div className="flex min-h-screen bg-[#F4F7FE] font-sans text-slate-700">
       <SidebarTendik />
 
-      {/* 2. MAIN CONTENT (ml-64 untuk memberi ruang sidebar fixed) */}
       <main className="flex-1 ml-64 min-h-screen">
-        
-        {/* TOP HEADER */}
-        <header className="h-16 bg-white border-b border-gray-100 flex items-center justify-between px-8 sticky top-0 z-20">
-          <div className="relative w-96">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300" size={18} />
+        {/* HEADER (Improved Visual) */}
+        <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20">
+          <div className="relative w-full max-w-md group">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" size={20} />
             <input 
               type="text" 
-              placeholder="Search" 
-              className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder:text-gray-400"
+              placeholder="Cari mahasiswa atau dokumen..." 
+              className="w-full pl-12 pr-4 py-2.5 bg-slate-100 border-transparent border focus:bg-white focus:border-blue-400 rounded-xl text-sm outline-none transition-all shadow-inner"
             />
           </div>
-          <div className="flex items-center gap-6 text-gray-400">
-            <Mail size={20} className="cursor-pointer hover:text-blue-600 transition" />
-            <div className="relative cursor-pointer hover:text-blue-600 transition">
-              <Bell size={20} />
-              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
-            </div>
+          <div className="flex items-center gap-5">
+            <button className="p-2.5 text-slate-400 hover:bg-slate-100 rounded-xl transition-all relative">
+              <Mail size={22} />
+            </button>
+            <button className="p-2.5 text-slate-400 hover:bg-slate-100 rounded-xl transition-all relative">
+              <Bell size={22} />
+              <span className="absolute top-2 right-2.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
+            </button>
+            <div className="h-10 w-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold shadow-lg shadow-blue-200 ml-2">A</div>
           </div>
         </header>
 
-        <div className="p-8 max-w-[1200px]">
-          <h1 className="text-xl font-bold text-gray-800 mb-8">Selamat Datang, Anton</h1>
+        <div className="p-10 max-w-[1400px] mx-auto">
+          <div className="mb-10">
+            <h1 className="text-3xl font-black text-slate-800 tracking-tight">Selamat Datang, Anton!</h1>
+            <p className="text-slate-500 font-medium mt-1">Ini ringkasan aktivitas administrasi skripsi hari ini.</p>
+          </div>
 
           {/* STATS CARDS */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
             <StatCard 
-              icon={<FileUp size={24} className="text-blue-600" />}
+              icon={<Users size={24} />}
               count={12} 
               label="Usulan Judul Baru" 
-              trend="5 judul minggu ini" 
+              trend="+5 minggu ini" 
               trendColor="text-emerald-500" 
             />
             <StatCard 
-              icon={<FileText size={24} className="text-blue-600" />}
+              icon={<FileText size={24} />}
               count={26} 
-              label="Dokumen Perlu Diverifikasi" 
-              trend="20 dokumen minggu ini" 
-              trendColor="text-emerald-500" 
+              label="Perlu Verifikasi" 
+              trend="Urgent" 
+              trendColor="text-red-500" 
             />
             <StatCard 
-              icon={<FileText size={24} className="text-blue-600" />}
+              icon={<Calendar size={24} />}
               count={8} 
-              label="Jadwal Seminar Bulan Ini" 
-              trend="tetap minggu ini" 
-              trendColor="text-orange-300" 
+              label="Jadwal Seminar" 
+              trend="Tetap" 
+              trendColor="text-slate-400" 
             />
           </div>
 
           {/* TABLE MANAGEMENT */}
-          <section className="bg-white rounded-2xl border border-gray-100 shadow-sm mb-8 overflow-hidden">
-            <div className="p-6 flex flex-wrap items-center justify-between gap-4 border-b border-gray-50">
-              <h2 className="text-lg font-bold text-gray-800">Manajemen Skripsi Mahasiswa</h2>
+          <section className="bg-white rounded-[2rem] border border-white shadow-xl shadow-slate-200/50 mb-12 overflow-hidden">
+            <div className="p-8 flex flex-wrap items-center justify-between gap-4 border-b border-slate-50">
+              <div>
+                <h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Manajemen Skripsi</h2>
+                <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Daftar mahasiswa aktif</p>
+              </div>
               <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-white text-gray-600 rounded-lg text-xs font-semibold border border-gray-200 cursor-pointer hover:bg-gray-50 shadow-sm">
+                <button className="flex items-center gap-2 px-4 py-2 bg-slate-50 text-slate-600 rounded-xl text-xs font-black border border-slate-100 hover:bg-slate-100 transition-all shadow-sm">
                   <Filter size={14} />
-                  <span>Proses Bimbingan</span>
-                </div>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300" size={14} />
-                  <input 
-                    type="text" 
-                    placeholder="Cari Data Mahasiswa" 
-                    className="pl-9 pr-4 py-1.5 bg-gray-50 border-none rounded-lg text-xs w-48 focus:outline-none focus:ring-1 focus:ring-blue-200"
-                  />
-                </div>
+                  FILTER STATUS
+                </button>
               </div>
             </div>
             
             <div className="overflow-x-auto">
-              <table className="w-full text-left">
+              <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-gray-50/50 text-[11px] uppercase tracking-wider text-gray-500 font-bold border-b border-gray-100">
-                    <th className="px-6 py-4">Nama Mahasiswa</th>
-                    <th className="px-6 py-4 text-center">NPM</th>
-                    <th className="px-6 py-4">Judul Skripsi</th>
-                    <th className="px-6 py-4 text-center">Status</th>
-                    <th className="px-6 py-4">Pembimbing</th>
-                    <th className="px-6 py-4 text-center">Aksi</th>
+                  <tr className="bg-slate-50/50 text-[11px] uppercase tracking-[0.15em] text-slate-400 font-black border-b border-slate-100">
+                    <th className="px-8 py-5">Mahasiswa</th>
+                    <th className="px-8 py-5 text-center">NPM</th>
+                    <th className="px-8 py-5">Judul Skripsi</th>
+                    <th className="px-8 py-5 text-center">Status</th>
+                    <th className="px-8 py-5 text-center">Aksi</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50 text-sm">
+                <tbody className="divide-y divide-slate-50">
                   <StudentRow 
                     name="Gerald Christopher"
                     npm="140810220014"
@@ -173,19 +199,35 @@ export default function DashboardTendik() {
           </section>
 
           {/* VERIFICATION LIST */}
-          <section className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-visible pb-20">
-            <div className="p-6 border-b border-gray-50">
-              <h2 className="text-lg font-bold text-gray-800">Verifikasi Berkas</h2>
+          <section className="bg-white rounded-[2rem] border border-white shadow-xl shadow-slate-200/50 overflow-visible pb-10">
+            <div className="p-8 border-b border-slate-50 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Antrean Verifikasi</h2>
+                <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Berkas masuk bimbingan</p>
+              </div>
+              <span className="bg-blue-600 text-white text-[10px] font-black px-3 py-1 rounded-full">{verificationData.length} TOTAL</span>
             </div>
-            <div className="divide-y divide-gray-50">
-              {verificationData.map((item) => (
-                <VerificationRow 
-                  key={item.id}
-                  item={item}
-                  isActive={activeDropdownId === item.id}
-                  onToggle={() => toggleDropdown(item.id)}
-                />
-              ))}
+
+            <div className="divide-y divide-slate-50">
+              {loadingVerification ? (
+                <div className="p-20 text-center text-slate-400 font-bold animate-pulse">
+                  Menghubungkan ke server...
+                </div>
+              ) : verificationData.length === 0 ? (
+                <div className="p-20 text-center">
+                   <CheckCircle className="mx-auto text-slate-100 mb-4" size={60} />
+                   <p className="text-slate-400 font-bold">Semua dokumen telah diverifikasi.</p>
+                </div>
+              ) : (
+                verificationData.map((item) => (
+                  <VerificationRow 
+                    key={item.id}
+                    item={item}
+                    isActive={activeDropdownId === item.id}
+                    onToggle={() => toggleDropdown(item.id)}
+                  />
+                ))
+              )}
             </div>
           </section>
         </div>
@@ -194,21 +236,20 @@ export default function DashboardTendik() {
   );
 }
 
-// --- SUB-COMPONENTS (Card, Rows, etc) ---
+// --- SUB COMPONENTS ---
 
 function StatCard({ icon, count, label, trend, trendColor }: StatCardProps) {
   return (
-    <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex items-start gap-4 hover:shadow-md transition">
-      <div className="p-3 bg-blue-50/50 rounded-xl border border-blue-100/50">
+    <div className="bg-white p-8 rounded-[2rem] border border-white shadow-lg shadow-slate-200/50 flex flex-col items-start gap-4 hover:translate-y-[-4px] transition-all duration-300 group">
+      <div className="p-4 bg-blue-50 text-blue-600 rounded-2xl group-hover:bg-blue-600 group-hover:text-white transition-colors duration-300">
         {icon}
       </div>
       <div>
-        <p className="text-3xl font-bold text-gray-800">{count}</p>
-        <p className="text-sm font-semibold text-gray-600 mt-1">{label}</p>
-        <div className={`flex items-center gap-2 mt-3 text-[10px] font-bold ${trendColor}`}>
-          <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
-          {trend}
-        </div>
+        <p className="text-4xl font-black text-slate-800 tracking-tighter">{count}</p>
+        <p className="text-sm font-bold text-slate-500 mt-1 uppercase tracking-tight">{label}</p>
+        <p className={`text-[10px] font-black mt-4 uppercase tracking-widest ${trendColor}`}>
+          ● {trend}
+        </p>
       </div>
     </div>
   );
@@ -216,81 +257,90 @@ function StatCard({ icon, count, label, trend, trendColor }: StatCardProps) {
 
 function StudentRow({ name, npm, title, status, lecturer }: StudentTask) {
   return (
-    <tr className="hover:bg-gray-50/50 transition">
-      <td className="px-6 py-5 font-bold text-gray-800">{name}</td>
-      <td className="px-6 py-5 text-center font-medium text-gray-600 text-xs">{npm}</td>
-      <td className="px-6 py-5 max-w-xs leading-relaxed text-[13px] font-semibold text-gray-700">{title}</td>
-      <td className="px-6 py-5 text-center">
-        <span className="px-4 py-1.5 bg-emerald-100 text-emerald-600 text-[10px] uppercase font-bold rounded-full border border-emerald-200">
+    <tr className="hover:bg-blue-50/30 transition-colors group">
+      <td className="px-8 py-6">
+        <p className="font-black text-slate-800 text-sm">{name}</p>
+        <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-0.5">{lecturer}</p>
+      </td>
+      <td className="px-8 py-6 text-center font-bold text-slate-400 text-xs tracking-tighter">{npm}</td>
+      <td className="px-8 py-6 max-w-xs">
+        <p className="line-clamp-2 text-[13px] font-bold text-slate-600 leading-snug">{title}</p>
+      </td>
+      <td className="px-8 py-6 text-center">
+        <span className="px-4 py-1.5 bg-green-100 text-green-700 text-[10px] uppercase font-black rounded-xl border border-green-200 tracking-widest">
           {status}
         </span>
       </td>
-      <td className="px-6 py-5 font-semibold text-gray-700 text-xs">{lecturer}</td>
-      <td className="px-6 py-5 text-center">
-        <button className="px-4 py-2 bg-[#9ca3af] text-white text-[11px] font-bold rounded-lg hover:bg-gray-600 transition shadow-sm">
-          Lihat Detail
+      <td className="px-8 py-6 text-center">
+        <button className="flex items-center gap-2 mx-auto px-5 py-2.5 bg-slate-900 text-white text-[11px] font-black rounded-xl hover:bg-blue-600 transition-all shadow-lg shadow-slate-200 uppercase tracking-widest active:scale-95">
+          Detail
+          <ChevronRight size={14} />
         </button>
       </td>
     </tr>
   );
 }
 
-// --- VERIFICATION COMPONENT WITH DROPDOWN LOGIC ---
-interface VerificationRowProps {
-  item: VerificationItem;
-  isActive: boolean;
-  onToggle: () => void;
-}
-
 function VerificationRow({ item, isActive, onToggle }: VerificationRowProps) {
   return (
-    <div className="px-8 py-5 flex items-center justify-between hover:bg-gray-50/30 transition verification-menu-container relative">
+    <div className="px-10 py-6 flex items-center justify-between hover:bg-slate-50/50 transition-colors verification-menu-container relative group">
       <div className="grid grid-cols-12 w-full items-center gap-4">
-        <div className="col-span-3 font-bold text-gray-800">{item.name}</div>
-        <div className="col-span-5 font-semibold text-gray-700 text-[13px]">{item.task}</div>
-        <div className="col-span-3 font-medium text-gray-500 text-[13px] text-right pr-8">{item.date}</div>
         
-        {/* ACTION BUTTON & POPUP */}
-        <div className="col-span-1 flex justify-end relative">
+        <div className="col-span-3">
+          <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-0.5">Mahasiswa</p>
+          <p className="font-black text-slate-800 text-sm">{item.proposal?.user?.nama || "-"}</p>
+        </div>
+
+        <div className="col-span-5">
+          <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-0.5">Jenis Berkas</p>
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center">
+              <FileText size={16} />
+            </div>
+            <p className="font-bold text-slate-700 text-[13px]">
+              {DOC_LABEL[item.nama_dokumen] ?? item.nama_dokumen}
+            </p>
+          </div>
+        </div>
+
+        <div className="col-span-3 text-right pr-12">
+          <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-0.5">Masuk Pada</p>
+          <p className="font-bold text-slate-500 text-[13px]">
+            {new Date(item.created_at).toLocaleDateString("id-ID", { day: 'numeric', month: 'short', year: 'numeric' })}
+          </p>
+        </div>
+        
+        <div className="col-span-1 flex justify-end">
           <button 
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggle();
-            }}
-            className={`p-1.5 rounded-full transition ${isActive ? 'bg-gray-100 text-gray-800' : 'text-gray-300 hover:text-gray-600 hover:bg-gray-50'}`}
+            onClick={(e) => { e.stopPropagation(); onToggle(); }}
+            className={`w-10 h-10 rounded-xl transition-all flex items-center justify-center shadow-sm border ${
+              isActive 
+                ? 'bg-blue-600 text-white border-blue-600 rotate-90' 
+                : 'bg-white text-slate-400 border-slate-100 hover:border-blue-400 hover:text-blue-600'
+            }`}
           >
-            <MoreHorizontal size={24} />
+            <MoreHorizontal size={20} />
           </button>
 
-          {/* POPUP MENU */}
           {isActive && (
-            <div className="absolute right-8 top-0 mt-2 w-56 bg-white rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] border border-gray-100 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
-              <div className="p-1.5 space-y-0.5">
-                
-                {/* Menu: Lihat Dokumen */}
-                <button className="w-full flex items-center gap-3 px-3 py-2.5 text-xs font-semibold text-gray-600 hover:bg-gray-50 rounded-lg transition text-left">
-                  <Eye size={16} className="text-gray-400" />
-                  Lihat Dokumen
+            <div className="absolute right-12 top-0 mt-4 w-60 bg-white rounded-[1.5rem] shadow-[0_20px_50px_-10px_rgba(0,0,0,0.15)] border border-slate-50 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+              <div className="p-2 space-y-1">
+                <button className="w-full flex items-center gap-3 px-4 py-3 text-xs font-black text-slate-600 hover:bg-slate-50 rounded-xl transition uppercase tracking-tighter">
+                  <Eye size={18} className="text-slate-400" />
+                  Lihat Berkas
                 </button>
-
-                {/* Menu: Download PDF (Background Abu) */}
-                <button className="w-full flex items-center gap-3 px-3 py-2.5 text-xs font-semibold text-gray-700 bg-gray-100/80 hover:bg-gray-200/80 rounded-lg transition text-left mt-1">
-                  <Download size={16} className="text-gray-500" />
-                  Download PDF
+                <button className="w-full flex items-center gap-3 px-4 py-3 text-xs font-black text-slate-600 hover:bg-slate-50 rounded-xl transition uppercase tracking-tighter border-b border-slate-50">
+                  <Download size={18} className="text-slate-400" />
+                  Unduh PDF
                 </button>
-
-                 {/* Menu: Verifikasi (Background Hijau) */}
-                 <button className="w-full flex items-center gap-3 px-3 py-2.5 text-xs font-bold text-[#15803d] bg-[#f0fdf4] hover:bg-[#dcfce7] rounded-lg transition text-left mt-1">
-                  <CheckCircle size={16} className="text-[#15803d]" />
-                  Verifikasi
+                <button className="w-full flex items-center gap-3 px-4 py-3 text-xs font-black text-green-700 bg-green-50 hover:bg-green-100 rounded-xl transition uppercase tracking-tighter">
+                  <CheckCircle size={18} />
+                  Verifikasi Sekarang
                 </button>
-
-                {/* Menu: Tolak (Teks Merah) */}
-                <button className="w-full flex items-center gap-3 px-3 py-2.5 text-xs font-bold text-red-500 hover:bg-red-50 rounded-lg transition text-left">
-                  <XCircle size={16} className="text-red-500" />
-                  Tolak
+                <button className="w-full flex items-center gap-3 px-4 py-3 text-xs font-black text-red-600 hover:bg-red-50 rounded-xl transition uppercase tracking-tighter">
+                  <XCircle size={18} />
+                  Tolak Berkas
                 </button>
-
               </div>
             </div>
           )}

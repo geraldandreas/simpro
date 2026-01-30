@@ -1,60 +1,171 @@
 "use client";
 
-import React from "react";
-import Sidebar from "@/components/sidebar-dosen"; // Pastikan path import sesuai struktur folder Anda
+import React, { useEffect, useState } from "react";
+import Sidebar from "@/components/sidebar-dosen"; 
 import { Search, Bell, MessageSquare } from "lucide-react";
+import { supabase } from "@/lib/supabaseClient";
+import Link from "next/link"; 
 
-// --- MOCK DATA ---
-const STATS = [
-  { 
-    count: 5, 
-    label: "Mahasiswa Bimbingan", 
-    desc: "Mahasiswa Bimbingan" // Redundan di visual, tapi untuk struktur data
-  },
-  { 
-    count: 4, 
-    label: "Proposal Menunggu Persetujuan",
-    desc: "Proposal Menunggu Persetujuan"
-  },
-  { 
-    count: 1, 
-    label: "Menunggu Persetujuan Seminar",
-    desc: "Menunggu Persetujuan Seminar"
-  }
-];
+// --- TYPES ---
+interface DashboardStat {
+  count: number;
+  label: string;
+  desc: string;
+}
 
-const STUDENTS = [
-  {
-    name: "Gerald Christopher Andreas",
-    npm: "140810220014",
-    status: "Proses Kesiapan Seminar",
-    pembimbing2: "Dr. Juli Rejito, M.Kom"
-  },
-  {
-    name: "Vera Setiawati",
-    npm: "140810220013",
-    status: "Pengajuan Proposal",
-    pembimbing2: "-"
-  },
-  {
-    name: "Dobi Nugraha",
-    npm: "140810220012",
-    status: "Proses Bimbingan",
-    pembimbing2: "Rudi Rosadi, M.Kom"
-  }
-];
+interface StudentData {
+  id: string; // Proposal ID
+  name: string;
+  npm: string;
+  status: string;
+  pembimbing2: string;
+}
 
-export default function DashboardPage() {
+export default function DashboardDosenPage() {
+  // State for Stats (Hapus item seminar)
+  const [stats, setStats] = useState<DashboardStat[]>([
+    { count: 0, label: "Mahasiswa Bimbingan", desc: "Mahasiswa Bimbingan" },
+    { count: 0, label: "Proposal Menunggu Persetujuan", desc: "Proposal Menunggu Persetujuan" }
+  ]);
   
-  // Helper untuk warna badge status
+  // State for Table
+  const [students, setStudents] = useState<StudentData[]>([]);
+  const [loading, setLoading] = useState(true);
+  
+  // State for User Name
+  const [dosenName, setDosenName] = useState<string>("");
+
+  // --- FETCH DATA ---
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        
+        // 1. Get Current User (Dosen)
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        // 1b. Fetch User Profile Name
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("nama")
+          .eq("id", user.id)
+          .single();
+        
+        if (profile) {
+          setDosenName(profile.nama);
+        }
+
+        // 2. Fetch Supervised Students
+        const { data: bimbinganData, error } = await supabase
+          .from("thesis_supervisors")
+          .select(`
+            proposal_id,
+            role,
+            proposal:proposals (
+              id,
+              judul,
+              status,
+              user:profiles!proposals_mahasiswa_id_fkey (
+                nama,
+                npm
+              ),
+              seminar_requests (
+                tipe,
+                status
+              )
+            )
+          `)
+          .eq("dosen_id", user.id);
+
+        if (error) {
+          console.error("Error fetching bimbingan:", error);
+          throw error;
+        }
+
+        // 3. Fetch Partner Supervisors (Pembimbing 2 logic)
+        const proposalIds = bimbinganData.map((b: any) => b.proposal_id);
+        let supervisorsMap: Record<string, string> = {};
+        
+        if (proposalIds.length > 0) {
+          const { data: allSupervisors } = await supabase
+            .from("thesis_supervisors")
+            .select(`
+              proposal_id,
+              dosen:profiles!thesis_supervisors_dosen_id_fkey ( nama )
+            `)
+            .in("proposal_id", proposalIds)
+            .neq("dosen_id", user.id); 
+
+          allSupervisors?.forEach((s: any) => {
+            supervisorsMap[s.proposal_id] = s.dosen?.nama || "-";
+          });
+        }
+
+        // 4. Process Data for Stats & Table
+        let countProposalWait = 0;
+
+        const mappedStudents: StudentData[] = bimbinganData.map((item: any) => {
+          const proposal = item.proposal;
+          const mhs = proposal?.user;
+          
+          const seminar = proposal?.seminar_requests?.find((r: any) => r.tipe === 'seminar');
+
+          // -- Status Logic --
+          let displayStatus = "Proses Bimbingan";
+          
+          if (proposal.status === "Menunggu Persetujuan Dosbing") {
+            displayStatus = "Pengajuan Proposal";
+            countProposalWait++;
+          } else if (seminar) {
+            if (['Menunggu Verifikasi', 'draft', 'Lengkap'].includes(seminar.status)) {
+              displayStatus = "Proses Kesiapan Seminar";
+            }
+          }
+
+          return {
+            id: proposal.id,
+            name: mhs?.nama || "Tanpa Nama",
+            npm: mhs?.npm || "-",
+            status: displayStatus,
+            pembimbing2: supervisorsMap[proposal.id] || "-" 
+          };
+        });
+
+        // 5. Update States (Hapus item seminar)
+        setStudents(mappedStudents);
+        setStats([
+          { 
+            count: mappedStudents.length, 
+            label: "Mahasiswa Bimbingan", 
+            desc: "Mahasiswa Bimbingan" 
+          },
+          { 
+            count: countProposalWait, 
+            label: "Proposal Menunggu Persetujuan",
+            desc: "Proposal Menunggu Persetujuan"
+          }
+        ]);
+
+      } catch (err) {
+        console.error("Error fetching dashboard:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  // Helper for Badge Colors
   const getStatusBadgeStyle = (status: string) => {
     switch (status) {
       case "Proses Kesiapan Seminar":
-        return "bg-[#8CAEE3] text-white"; // Biru Pucat
+        return "bg-[#8CAEE3] text-white"; 
       case "Pengajuan Proposal":
-        return "bg-[#E6CF95] text-white"; // Kuning/Gold Pucat
+        return "bg-[#E6CF95] text-white"; 
       case "Proses Bimbingan":
-        return "bg-[#AEC0BA] text-white"; // Abu-abu Kehijauan
+        return "bg-[#AEC0BA] text-white"; 
       default:
         return "bg-gray-200 text-gray-700";
     }
@@ -71,7 +182,6 @@ export default function DashboardPage() {
         
         {/* HEADER */}
         <header className="h-20 bg-white border-b border-gray-100 flex items-center justify-between px-8">
-          {/* Search Bar */}
           <div className="relative w-96">
             <input 
               type="text" 
@@ -81,7 +191,6 @@ export default function DashboardPage() {
             <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
           </div>
 
-          {/* Icons */}
           <div className="flex items-center gap-6">
             <button className="text-gray-400 hover:text-gray-600">
               <MessageSquare size={22} />
@@ -96,17 +205,18 @@ export default function DashboardPage() {
         {/* CONTENT BODY */}
         <div className="flex-1 p-8 bg-white">
           
-          {/* Welcome Message */}
           <h1 className="text-2xl font-bold text-gray-900 mb-8">
-            Selamat Datang, Dr. Asep Sholahuddin, MT.
+            Selamat Datang, {dosenName || "Dosen Pembimbing"}.
           </h1>
 
-          {/* STATS CARDS */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-            {STATS.map((stat, idx) => (
+          {/* STATS CARDS (Ubah ke grid-cols-2) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+            {stats.map((stat, idx) => (
               <div key={idx} className="border border-gray-300 rounded-2xl p-8 flex flex-col justify-center items-center text-center h-48 hover:shadow-sm transition-shadow">
-                <span className="text-4xl font-extrabold text-gray-900 mb-4">{stat.count}</span>
-                <span className="text-base font-semibold text-gray-900 max-w-[150px] leading-tight">
+                <span className="text-4xl font-extrabold text-gray-900 mb-4">
+                  {loading ? "..." : stat.count}
+                </span>
+                <span className="text-base font-semibold text-gray-900 max-w-[200px] leading-tight">
                   {stat.label}
                 </span>
               </div>
@@ -129,7 +239,23 @@ export default function DashboardPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {STUDENTS.map((student, idx) => (
+                  {loading && (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-8 text-center text-gray-400">
+                        Memuat data...
+                      </td>
+                    </tr>
+                  )}
+
+                  {!loading && students.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-8 text-center text-gray-400">
+                        Belum ada mahasiswa bimbingan.
+                      </td>
+                    </tr>
+                  )}
+
+                  {students.map((student, idx) => (
                     <tr key={idx} className="hover:bg-gray-50/50">
                       <td className="px-6 py-6 text-sm font-medium text-gray-900">
                         {student.name}
@@ -146,9 +272,11 @@ export default function DashboardPage() {
                         {student.pembimbing2}
                       </td>
                       <td className="px-6 py-6 text-center">
-                        <button className="bg-[#6AA495] hover:bg-[#588d7f] text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors shadow-sm">
-                          Lihat Detail
-                        </button>
+                        <Link href={`/dosen/accproposal?id=${student.id}`}>
+                          <button className="bg-[#6AA495] hover:bg-[#588d7f] text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors shadow-sm">
+                            Lihat Detail
+                          </button>
+                        </Link>
                       </td>
                     </tr>
                   ))}
