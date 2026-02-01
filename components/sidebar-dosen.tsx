@@ -33,19 +33,18 @@ export default function SidebarDosen() {
 
   // ================= FETCH PROFILE =================
   useEffect(() => {
-    const fetchProfile = async () => {
+     const fetchProfile = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
       const { data } = await supabase
         .from("profiles")
-        .select("nama, role")
+        .select("nama")
         .eq("id", user.id)
         .single();
 
-      if (data) {
-        setNama(data.nama || "User");
-        setRole(data.role === "dosen" ? "Dosen" : data.role);
+      if (data?.nama) {
+        setNama(data.nama);
       }
     };
 

@@ -6,46 +6,65 @@ import { useRouter } from 'next/navigation'
 
 export default function Signup() {
   const router = useRouter()
+
+  const [nama, setNama] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
 
   // ======================
+  // HELPER ERROR
+  // ======================
+  const showError = (err: any) => {
+    if (!err) return
+    if (typeof err === 'string') alert(err)
+    else if (err.message) alert(err.message)
+    else alert('Terjadi kesalahan')
+  }
+
+  // ======================
   // EMAIL SIGNUP
   // ======================
   const handleSignup = async () => {
-    if (!email || !password) {
-      alert('Email dan password wajib diisi.')
+  if (!nama || !email || !password) {
+    alert('Nama, email, dan password wajib diisi.')
+    return
+  }
+
+  try {
+    setLoading(true)
+
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        data: {
+          nama,
+          role: 'mahasiswa',
+        },
+      },
+    })
+
+    if (error) {
+      alert(error.message)
       return
     }
 
-    try {
-      setLoading(true)
+    // ⚠️ kondisi normal saat email confirmation aktif
+    alert(
+      'Pendaftaran berhasil.\nSilakan cek email untuk verifikasi.'
+    )
 
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            role: 'mahasiswa',
-          },
-        },
-      })
-
-      if (error) {
-        alert(error.message)
-        return
-      }
-
-      alert('Signup berhasil! Silakan cek email untuk verifikasi atau langsung login.')
-      router.push('/login')
-    } catch (err) {
-      console.error(err)
-      alert('Terjadi kesalahan saat signup.')
-    } finally {
-      setLoading(false)
-    }
+    router.push('/login')
+  } catch (err) {
+    console.error(err)
+    alert('Terjadi kesalahan saat signup.')
+  } finally {
+    setLoading(false)
   }
+}
+
 
   // ======================
   // GOOGLE SIGNUP
@@ -64,9 +83,7 @@ export default function Signup() {
         },
       })
 
-      if (error) {
-        alert(error.message)
-      }
+      if (error) showError(error)
     } catch (err) {
       console.error(err)
       alert('Gagal login dengan Google.')
@@ -78,124 +95,93 @@ export default function Signup() {
   return (
     <div className="min-h-screen grid grid-cols-1 lg:grid-cols-2 bg-white font-sans">
       
-      {/* SISI KIRI (BIRU) */}
-      <div className="relative bg-[#1a5fb4] text-white flex flex-col justify-between overflow-hidden">
-        
-        <div 
-          className="hidden lg:block absolute top-0 -right-1 h-full w-[15%] bg-white"
-          style={{ 
-            borderRadius: "100% 0 0 100% / 50%",
-            transform: "scaleY(1.1)"
-          }}
-        />
-
-        <div className="z-10 px-12 pt-20 text-center lg:text-left">
-          <h1 className="text-4xl md:text-5xl font-bold mb-6 tracking-tight">
-            Selamat Datang Di <br /> SIMPRO
+      {/* SISI KIRI */}
+      <div className="relative bg-[#1a5fb4] text-white flex flex-col justify-between">
+        <div className="px-12 pt-20">
+          <h1 className="text-5xl font-bold mb-6">
+            Selamat Datang di <br /> SIMPRO
           </h1>
-
-          <p className="max-w-md text-[15px] leading-relaxed opacity-90 mx-auto lg:mx-0">
-            SIMPRO ( Sistem Informasi PROcessing Sidang ) adalah website sistem
-            informasi manajemen sidang skripsi yang dapat membantu mahasiswa,
-            ketua program prodi serta dosen untuk melakukan monitoring terhadap skripsi.
+          <p className="max-w-md opacity-90">
+            Sistem Informasi Processing Sidang Skripsi
           </p>
         </div>
 
-        <div className="relative z-10 flex justify-center mt-auto">
+        <div className="flex justify-center pb-10">
           <img
             src="/students.png"
             alt="Students"
-            className="w-[85%] max-w-[500px] object-contain block align-bottom"
+            className="w-[80%] max-w-[420px]"
           />
         </div>
       </div>
 
-      {/* SISI KANAN (FORM) */}
-      <div className="flex items-center justify-center px-8 py-16 lg:px-20">
+      {/* SISI KANAN */}
+      <div className="flex items-center justify-center px-8 py-16">
         <div className="w-full max-w-lg">
           
-          <h2 className="text-3xl font-medium text-gray-800 mb-8">Daftar</h2>
+          <h2 className="text-3xl font-semibold text-gray-800 mb-8">
+            Daftar Akun
+          </h2>
 
-          {/* GOOGLE SIGNUP */}
+          {/* GOOGLE */}
           <button
             onClick={handleGoogleSignup}
             disabled={loading}
-            className="w-full border border-gray-300 py-3 rounded-full flex items-center justify-center gap-3 hover:bg-gray-50 transition shadow-sm disabled:opacity-50"
+            className="w-full border py-3 rounded-full flex justify-center gap-3 hover:bg-gray-50 mb-6 disabled:opacity-50"
           >
-            <img 
-              src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" 
-              className="w-5" 
-              alt="Google" 
+            <img
+              src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
+              className="w-5"
             />
-            <span className="text-gray-700 font-medium">
-              {loading ? 'Memproses...' : 'Daftar Dengan Google'}
-            </span>
+            Daftar dengan Google
           </button>
 
-          {/* Divider */}
-          <div className="flex items-center my-8">
+          <div className="flex items-center my-6">
             <div className="flex-1 h-px bg-gray-200" />
-            <span className="px-4 text-gray-400 text-sm">Atau</span>
+            <span className="px-4 text-gray-400 text-sm">atau</span>
             <div className="flex-1 h-px bg-gray-200" />
           </div>
 
-          {/* FORM INPUTS */}
-          <div className="space-y-5">
+          {/* FORM */}
+          <div className="space-y-4">
             <div>
-              <label className="text-sm font-medium text-gray-600">Email Unpad</label>
-              <input 
-                type="email" 
+              <label className="text-sm text-gray-600">Nama Lengkap</label>
+              <input
+                value={nama}
+                onChange={(e) => setNama(e.target.value)}
+                className="w-full border rounded-lg p-3 mt-1"
+                placeholder="Nama lengkap"
+              />
+            </div>
+
+            <div>
+              <label className="text-sm text-gray-600">Email</label>
+              <input
+                type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg mt-2 p-3.5 focus:border-blue-500 outline-none transition" 
+                className="w-full border rounded-lg p-3 mt-1"
               />
             </div>
 
             <div>
-              <div className="flex justify-between items-center">
-                <label className="text-sm font-medium text-gray-600">Kata Sandi</label>
-                <button className="text-gray-400 text-sm flex items-center gap-1">
-                  <span className="material-icons-outlined text-xs">visibility_off</span> Hide
-                </button>
-              </div>
-              <input 
-                type="password" 
+              <label className="text-sm text-gray-600">Password</label>
+              <input
+                type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg mt-2 p-3.5 focus:border-blue-500 outline-none transition" 
+                className="w-full border rounded-lg p-3 mt-1"
               />
             </div>
           </div>
 
-          {/* TERMS */}
-          <div className="mt-5 flex items-start gap-3">
-            <input 
-              type="checkbox" 
-              className="mt-1 w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" 
-              id="terms"
-            />
-            <label htmlFor="terms" className="text-[13px] text-gray-700 leading-tight">
-              Setuju dengan <span className="underline cursor-pointer">Ketentuan Penggunaan</span> dan <span className="underline cursor-pointer">Kebijakan Privasi</span> kami
-            </label>
-          </div>
-
-          {/* SIGN UP BUTTON */}
           <button
             onClick={handleSignup}
             disabled={loading}
-            className="w-full bg-[#71a1cc] text-white font-semibold py-4 rounded-2xl mt-8 hover:bg-[#6390b8] transition shadow-md disabled:opacity-50"
+            className="w-full bg-[#71a1cc] text-white py-4 rounded-xl mt-8 font-semibold disabled:opacity-50"
           >
-            {loading ? 'Memproses...' : 'Sign up'}
+            {loading ? 'Memproses...' : 'Sign Up'}
           </button>
-
-          {/* LOGIN LINK */}
-          <p className="mt-6 text-sm text-center text-gray-600">
-            Sudah punya akun?{" "}
-            <a href="/login" className="text-blue-600 font-semibold hover:underline">
-              Masuk
-            </a>
-          </p>
-
         </div>
       </div>
     </div>

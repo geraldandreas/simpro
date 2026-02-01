@@ -1,6 +1,6 @@
 "use client";
 
-import React, { JSX, useEffect, useState } from "react";
+import { JSX, useEffect, useState } from "react";
 import Link from "next/link";
 import { 
   Search, 
@@ -9,8 +9,6 @@ import {
   ChevronRight,
   User,
   Calendar as CalendarIcon,
-  Clock,
-  MoreHorizontal,
   ArrowRight,
   MapPin,
   Video
@@ -19,7 +17,7 @@ import { supabase } from "@/lib/supabaseClient";
 
 // ================= TYPES =================
 
-interface MahasiswaBimbingan {
+export interface MahasiswaBimbingan {
   proposal_id: string;
   nama: string;
   npm: string;
@@ -29,7 +27,7 @@ interface MahasiswaBimbingan {
 
 // ================= STATUS MAPPER =================
 
-function mapStatusToUI(params: {
+export function mapStatusToUI(params: {
   proposalStatus: string | null;
   hasSeminar: boolean;
 }) {
@@ -69,7 +67,7 @@ export default function MahasiswaBimbinganKaprodiPage() {
   const [hour, setHour] = useState("02");
   const [minute, setMinute] = useState("00");
   const [period, setPeriod] = useState<"AM" | "PM">("PM");
-  const [catatan, setCatatan] = useState("");
+  const [keterangan, setketerangan] = useState("");
   const [saving, setSaving] = useState(false);
 
   // ================= FETCH (Logika Backend Tetap) =================
@@ -92,6 +90,7 @@ export default function MahasiswaBimbinganKaprodiPage() {
           )
         `)
         .eq("dosen_id", uid);
+        console.log("data", data)
 
       if (error) throw error;
 
@@ -173,7 +172,7 @@ export default function MahasiswaBimbinganKaprodiPage() {
         tanggal: formatDateInput(),
         jam: buildTime24(),
         metode,
-        catatan,
+        keterangan,
         status: "belum_dimulai",
         dosen_id: dosenId,
       }));
@@ -192,20 +191,18 @@ export default function MahasiswaBimbinganKaprodiPage() {
       
       {/* HEADER */}
       <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
-        <div className="relative w-96 group">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" size={18} />
-          <input 
-            type="text" 
-            placeholder="Cari mahasiswa..." 
-            className="w-full pl-12 pr-4 py-2.5 bg-slate-100 border-none rounded-xl text-sm focus:ring-2 focus:ring-blue-500 transition-all outline-none"
-          />
-        </div>
+          <div className="flex items-center gap-6">
+            <div className="relative w-72 group">
+            </div>
+          </div>
 
-        <button className="relative p-2.5 text-slate-400 hover:bg-slate-100 rounded-xl transition-all">
-          <Bell size={22} />
-          <span className="absolute top-2 right-2.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
-        </button>
-      </header>
+          <div className="flex items-center gap-6">
+            {/* Minimalist SIMPRO Text */}
+            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
+              Simpro
+            </span>
+          </div>
+        </header>
 
       {/* MAIN */}
       <main className="flex-1 p-10 max-w-[1400px] mx-auto w-full">
@@ -374,8 +371,8 @@ export default function MahasiswaBimbinganKaprodiPage() {
 
                 <textarea 
                   placeholder="Catatan Ruangan atau Link Virtual..." 
-                  value={catatan}
-                  onChange={(e) => setCatatan(e.target.value)}
+                  value={keterangan}
+                  onChange={(e) => setketerangan(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 border-dashed rounded-xl px-4 py-4 text-xs font-medium text-slate-600 focus:ring-2 focus:ring-blue-50 focus:border-blue-400 outline-none resize-none min-h-[80px]"
                 />
 

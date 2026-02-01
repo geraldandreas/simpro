@@ -5,7 +5,6 @@ import Link from "next/link";
 import { 
   Search, 
   Bell, 
-  X, 
   Filter, 
   FileText, 
   ChevronRight, 
@@ -25,8 +24,9 @@ interface ProposalItem {
   user: {
     nama: string | null;
     npm: string | null;
-  }[];
+  };
 }
+
 
 export default function AksesProposalPage() {
   const [proposals, setProposals] = useState<ProposalItem[]>([]);
@@ -42,10 +42,13 @@ export default function AksesProposalPage() {
       const { data, error } = await supabase
         .from("proposals")
         .select(`id, judul, bidang, status, user:profiles ( nama, npm )`)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .returns<ProposalItem[]>();
 
       if (error) throw error;
-      setProposals((data ?? []) as ProposalItem[]);
+      console.log("data", data)
+      
+      setProposals(data);
     } catch (err) {
       console.error("❌ Gagal mengambil proposal:", err);
     } finally {
@@ -60,8 +63,8 @@ export default function AksesProposalPage() {
   const filteredProposals = proposals.filter((item) => {
     const matchSearch =
       item.judul.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.user[0]?.nama?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.user[0]?.npm?.toLowerCase().includes(searchQuery.toLowerCase());
+      item.user?.nama?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.user?.npm?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchBidang = filterBidang === "Semua" || item.bidang === filterBidang;
     const matchStatus =
       filterStatus === "Semua" ||
@@ -80,27 +83,20 @@ export default function AksesProposalPage() {
   return (
     <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-[#F4F7FE] font-sans text-slate-700">
       
-      {/* HEADER - Glassmorphism Effect */}
-      <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
-        <div className="relative w-96 group">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" size={18} />
-          <input
-            type="text"
-            placeholder="Cari proposal..."
-            className="w-full pl-12 pr-4 py-2.5 bg-slate-100 border-transparent border focus:bg-white focus:border-blue-400 rounded-xl text-sm outline-none transition-all shadow-inner"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </div>
-
-        <div className="flex items-center gap-4">
-          <button className="p-2.5 text-slate-400 hover:bg-slate-100 rounded-xl transition-all relative">
-            <Bell size={22} />
-            <span className="absolute top-2 right-2.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
-          </button>
-          <div className="h-10 w-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold shadow-lg shadow-blue-200 ml-2 uppercase">K</div>
-        </div>
-      </header>
+       {/* HEADER - Glassmorphism */}
+              <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
+                <div className="flex items-center gap-6">
+                  <div className="relative w-72 group">
+                  </div>
+                </div>
+      
+                <div className="flex items-center gap-6">
+                  {/* Minimalist SIMPRO Text */}
+                  <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
+                    Simpro
+                  </span>
+                </div>
+              </header>
 
       <main className="p-10 max-w-[1400px] mx-auto w-full">
         <div className="mb-10">
@@ -213,18 +209,18 @@ export default function AksesProposalPage() {
                         <td className="py-8 px-8">
                           <div className="flex items-center gap-4">
                             <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-black group-hover:bg-blue-600 group-hover:text-white transition-all shrink-0 uppercase">
-                              {item.user[0]?.nama?.charAt(0) || "?"}
+                              {item.user?.nama?.charAt(0) || "?"}
                             </div>
                             <div className="min-w-0">
-                                <p className="text-sm font-black text-slate-800 leading-none truncate uppercase tracking-tight">{item.user[0]?.nama ?? "-"}</p>
-                                <p className="text-[10px] text-slate-400 font-black mt-1.5 tracking-tighter">{item.user[0]?.npm ?? "-"}</p>
+                                <p className="text-sm font-black text-slate-800 leading-relaxed truncate uppercase tracking-wider">{item.user?.nama ?? "-"}</p>
+                                <p className="text-[10px] text-slate-400 font-black mt-1.5 tracking-wide">{item.user?.npm ?? "-"}</p>
                             </div>
                           </div>
                         </td>
 
                         <td className="py-8 px-8">
-                          <p className="text-[13px] font-bold text-slate-600 leading-relaxed line-clamp-2 italic pr-6">
-                            "{item.judul}"
+                          <p className="text-[13px] font-bold text-slate-600 leading-relaxed line-clamp-2 pr-6">
+                            {item.judul}
                           </p>
                         </td>
 

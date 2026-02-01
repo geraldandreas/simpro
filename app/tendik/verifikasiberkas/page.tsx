@@ -120,6 +120,7 @@ export default function VerifikasiBerkasPage() {
     }
   };
 
+  
   useEffect(() => {
     fetchDocuments();
   }, []);
@@ -263,24 +264,25 @@ export default function VerifikasiBerkasPage() {
 
       <main className="flex-1 ml-64 min-h-screen flex flex-col">
         {/* HEADER */}
-        <header className="h-20 bg-white border-b border-gray-100 flex items-center justify-between px-8 sticky top-0 z-20">
-          <div className="relative w-96">
-            <Search
-              className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300"
-              size={18}
-            />
-            <input
-              type="text"
-              placeholder="Search"
-              className="w-full pl-11 pr-4 py-2.5 bg-gray-50 border border-gray-100 rounded-lg text-sm focus:outline-none"
-            />
-          </div>
-
-          <div className="flex items-center gap-5">
-            <MessageSquare size={22} className="text-gray-400" />
-            <Bell size={22} className="text-gray-400" />
-          </div>
-        </header>
+        <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
+                          <div className="flex items-center gap-6">
+                            <div className="relative w-72 group">
+                              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" size={16} />
+                              <input 
+                                type="text" 
+                                placeholder="Cari data..." 
+                                className="w-full pl-10 pr-4 py-2 bg-slate-100 border-transparent border focus:bg-white focus:border-blue-400 rounded-xl text-xs outline-none transition-all shadow-inner uppercase tracking-widest"
+                              />
+                            </div>
+                          </div>
+                
+                          <div className="flex items-center gap-6">
+                            {/* Minimalist SIMPRO Text */}
+                            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
+                              Simpro
+                            </span>
+                          </div>
+                        </header>
 
         {/* CONTENT */}
         <div className="p-8">
@@ -319,9 +321,13 @@ export default function VerifikasiBerkasPage() {
                 <tbody className="divide-y divide-gray-100">
                   {documents.map((item) => (
                     <tr key={item.id} className="hover:bg-gray-50">
-                      <td className="px-8 py-6 font-semibold text-gray-800">
-                        {item.proposal[0]?.user[0]?.nama || "-"}
-                      </td>
+                      {/* Kode Baru dengan Optional Chaining yang lebih kuat */}
+<td className="px-8 py-6 font-semibold text-gray-800">
+  {(item.proposal as any)?.user?.nama || 
+   (item.proposal as any)?.[0]?.user?.nama || 
+   (item.proposal as any)?.[0]?.user?.[0]?.nama || 
+   "-"}
+</td>
 
                       <td className="px-8 py-6 text-gray-700">
                         {DOC_LABEL[item.nama_dokumen] ??

@@ -3,17 +3,19 @@
 import React, { useEffect, useState } from "react";
 import { 
   Search, Bell, ArrowLeft, FileText, 
-  CheckCircle, Clock, MessageSquare, Eye, Check, X, AlertCircle 
+  CheckCircle, Eye, Check, X, Download, 
+  ShieldCheck, Clock, Layers, LayoutDashboard,
+  MoreHorizontal
 } from "lucide-react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import SidebarTendik from "@/components/sidebar-tendik"; 
 
 // ================= TYPES =================
-
 interface StudentDetail {
   id: string;
   judul: string;
+  status_proposal: string; // Tambahkan ini untuk tracking status utama
   user: {
     nama: string;
     npm: string;
@@ -24,7 +26,7 @@ interface DocumentData {
   id: string;
   nama_dokumen: string;
   status: string; 
-  created_at: string; // ✅ FIX: Sesuai nama kolom di DB
+  created_at: string;
   file_url: string;
 }
 
@@ -35,25 +37,30 @@ interface GuidanceSession {
   dosen_nama: string;
 }
 
-interface ActivityLog {
-  date: string;
-  desc: string;
-}
-
-// ⚠️ Pastikan ID di sini sama persis dengan yang disimpan di kolom 'nama_dokumen' di database
 const REQUIRED_DOCS = [
-  { id: 'transkrip_nilai', label: "Transkrip Nilai" },
   { id: 'berita_acara_bimbingan', label: "Berita Acara Bimbingan" },
+  { id: 'transkrip_nilai', label: "Transkrip Nilai" },
   { id: 'matriks_perbaikan', label: "Formulir Matriks Perbaikan Skripsi" },
-  { id: 'bukti_pengajuan_judul', label: "Bukti Pengajuan Judul" },
-  { id: 'pengajuan_sidang', label: "Formulir Pengajuan Sidang" },
-  { id: 'bukti_bayar', label: "Bukti Pembayaran" },
-  { id: 'bebas_pus_univ', label: "Bebas Pinjaman Perpus Univ" },
-  { id: 'bebas_pus_fak', label: "Bebas Pinjaman Perpus Fakultas" },
   { id: 'toefl', label: "Sertifikat TOEFL" },
-  { id: 'print_skripsi', label: "Print Out Skripsi" },
-  { id: 'flyer', label: "FLYER Skripsi" }
+  { id: 'print_jurnal', label: "Print Out Jurnal Skripsi" },
+  { id: 'sertifikat_publikasi', label: "Sertifikat Publikasi / Jurnal" },
+  { id: 'pengajuan_sidang', label: "Formulir Pengajuan Sidang" },
+  { id: 'bukti_bayar', label: "Bukti Pembayaran Registrasi" },
+  { id: 'bebas_pus_univ', label: "Bebas Pinjaman Perpustakaan Univ" },
+  { id: 'bebas_pus_fak', label: "Bebas Pinjaman Perpustakaan Fak" },
+  { id: 'bukti_pengajuan_judul', label: "Bukti pengajuan Topik/Judul" },
+  { id: 'skpi', label: "SKPI" },
+  { id: 'biodata_sidang', label: "Biodata Sidang" },
+  { id: 'foto', label: "Foto Hitam Putih Cerah" },
+  { id: 'pengantar_ijazah', label: "Surat Pengantar Ijazah" },
+  { id: 'print_skripsi', label: "Print Out Skripsi 3 buah" },
+  { id: 'flyer', label: "FLYER Skripsi" },
 ];
+
+const normalizeStoragePath = (rawPath: string) => {
+  if (!rawPath) return "";
+  return rawPath.replace(/^docseminar\//gi, "").trim().replace(/\\/g, "/").replace(/\/+/g, "/").replace(/^\/+/, "");
+};
 
 export default function DetailProgresTendikPage() {
   const searchParams = useSearchParams();
@@ -63,305 +70,251 @@ export default function DetailProgresTendikPage() {
   const [student, setStudent] = useState<StudentDetail | null>(null);
   const [documents, setDocuments] = useState<DocumentData[]>([]);
   const [bimbingan, setBimbingan] = useState<GuidanceSession[]>([]);
-  const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tahap, setTahap] = useState("Proses Bimbingan");
+  const [tahap, setTahap] = useState("Memuat...");
   const [processingDoc, setProcessingDoc] = useState<string | null>(null);
+  const [activeDropdownId, setActiveDropdownId] = useState<string | null>(null);
 
-  // ================= FETCH DATA =================
-  
   const fetchData = async () => {
     if (!proposalId) return;
-    
     try {
-      // 1. Ambil Detail Proposal
-      // NOTE: Menggunakan !inner atau !fk jika ada masalah relasi. 
-      // Jika masih error foreign key, coba hapus '!proposals_user_id_fkey' dan biarkan 'user:profiles(...)' saja.
       const { data: propData, error: propError } = await supabase
         .from("proposals")
         .select(`
-          id, judul,
-          user:profiles (nama, npm), 
+          id, judul, status,
+          profiles!proposals_user_id_fkey (nama, npm), 
           seminar_requests ( tipe, status )
         `)
         .eq("id", proposalId)
         .single();
 
-      if (propError) {
-        console.error("Error Proposal:", propError);
-        return;
-      }
-
+      if (propError) throw propError;
+      
+      const profile = Array.isArray(propData.profiles) ? propData.profiles[0] : propData.profiles;
       setStudent({
         id: propData.id,
         judul: propData.judul,
-        user: {
-          nama: propData.user[0]?.nama || "-",
-          npm: propData.user[0]?.npm || "-"
-        }
+        status_proposal: propData.status,
+        user: { nama: profile?.nama || "Tanpa Nama", npm: profile?.npm || "-" }
       });
 
-      // Logic Tahap Sederhana
-      const seminar = propData.seminar_requests?.find((r: any) => r.tipe === 'seminar');
-      if (seminar?.status === 'Lengkap') setTahap("Kesiapan Seminar");
-      else if (seminar?.status === 'Menunggu Verifikasi') setTahap("Verifikasi Berkas");
-      else if (seminar?.status === 'Dijadwalkan') setTahap("Seminar Dijadwalkan");
+      // 1. Fetch Berkas
+      const { data: docData } = await supabase.from("seminar_documents").select("*").eq("proposal_id", proposalId);
+      const currentDocs = docData || [];
+      setDocuments(currentDocs);
 
-      // 2. Ambil Status Dokumen
-      const { data: docData, error: docError } = await supabase
-        .from("seminar_documents")
-        .select("id, nama_dokumen, status, created_at, file_url") 
-        .eq("proposal_id", proposalId);
+      // ================= LOGIKA TIMELINE DINAMIS =================
+      const seminarReq = propData.seminar_requests?.find((r: any) => r.tipe === 'seminar');
+      const totalDocs = currentDocs.length;
+      const validDocs = currentDocs.filter((d: any) => d.status === 'Lengkap').length;
 
-      if (docError) console.error("Error Docs:", docError);
-      setDocuments(docData || []);
+      if (propData.status === 'Lulus Sidang') setTahap("SELESAI");
+      else if (seminarReq?.status === 'Selesai') setTahap("PERBAIKAN PASCA SEMINAR");
+      else if (seminarReq?.status === 'Dijadwalkan') setTahap("SEMINAR DIJADWALKAN");
+      else if (totalDocs > 0 && validDocs < REQUIRED_DOCS.length) setTahap("VERIFIKASI BERKAS");
+      else if (totalDocs >= REQUIRED_DOCS.length) setTahap("UPLOAD DOKUMEN");
+      else if (propData.status === 'Diterima') setTahap("PROSES BIMBINGAN");
+      else if (propData.status === 'Menunggu Persetujuan') setTahap("PERSETUJUAN JUDUL");
+      else setTahap("PENGAJUAN");
+      // ===========================================================
 
-      // 3. Ambil Riwayat Bimbingan
+      // 2. Fetch Bimbingan
       const { data: bimData } = await supabase
         .from("guidance_sessions")
-        .select(`
-          id, sesi_ke, tanggal, 
-          dosen:profiles (nama)
-        `)
+        .select(`id, sesi_ke, tanggal, dosen:profiles!guidance_sessions_dosen_id_fkey (nama)`)
         .eq("proposal_id", proposalId)
-        .order("tanggal", { ascending: false })
-        .limit(3);
+        .order("tanggal", { ascending: false });
 
-      const mappedBim = (bimData || []).map((b: any) => ({
-        id: b.id,
-        sesi_ke: b.sesi_ke,
-        tanggal: b.tanggal,
-        dosen_nama: b.dosen?.nama || "-"
-      }));
-      setBimbingan(mappedBim);
+      setBimbingan((bimData || []).map((b: any) => ({
+        id: b.id, sesi_ke: b.sesi_ke, tanggal: b.tanggal, dosen_nama: b.dosen?.nama || "-"
+      })));
 
-      // 4. Log Aktivitas
-      const logs = (docData || []).map((d: any) => ({
-        date: d.created_at,
-        desc: `${d.nama_dokumen.replace(/_/g, ' ')} diperbarui.`
-      })).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 3);
-      setActivities(logs);
-
-    } catch (err) {
-      console.error("System Error:", err);
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) { console.error(err); } finally { setLoading(false); }
   };
 
+  useEffect(() => { fetchData(); }, [proposalId]);
+
+  // Handler lainnya (handleActionFile, handleVerify, dll) tetap sama seperti sebelumnya...
   useEffect(() => {
-    fetchData();
-  }, [proposalId]);
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest(".dropdown-container")) setActiveDropdownId(null);
+    };
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, []);
 
-  // ================= ACTION HANDLERS =================
-
-  // 1. Lihat File (Generate Signed URL)
-  const handleViewFile = async (path: string) => {
-    if (!path) return;
-    
-    // Normalisasi path jika perlu (menghapus prefix bucket jika tersimpan ganda)
-    const cleanPath = path.replace(/^docseminar\//, ''); 
-
+  const handleActionFile = async (rawPath: string, download = false) => {
+    if (!rawPath) return;
     try {
-      const { data, error } = await supabase.storage
-        .from('docseminar') // Pastikan nama bucket sesuai di Supabase Storage
-        .createSignedUrl(cleanPath, 3600); // URL valid 1 jam
-      
-      if (error || !data?.signedUrl) {
-        console.error("Storage Error:", error);
-        alert("Gagal membuat link file. Pastikan file ada di storage.");
-        return;
+      const { data, error } = await supabase.storage.from('docseminar').createSignedUrl(normalizeStoragePath(rawPath), 3600); 
+      if (error || !data?.signedUrl) throw new Error();
+      if (download) {
+        const link = document.createElement("a");
+        link.href = data.signedUrl;
+        link.download = rawPath.split("/").pop() || "dokumen.pdf";
+        link.click();
+      } else {
+        window.open(data.signedUrl, '_blank');
       }
-
-      window.open(data.signedUrl, '_blank');
-    } catch (e) {
-      alert("Error system saat membuka file.");
-    }
+    } catch { alert("Gagal memproses berkas."); } finally { setActiveDropdownId(null); }
   };
 
-  // 2. Verifikasi / Tolak Dokumen
   const handleVerify = async (docId: string, newStatus: string) => {
-    const action = newStatus === 'Lengkap' ? "menyetujui" : "menolak";
-    if (!confirm(`Apakah Anda yakin ingin ${action} dokumen ini?`)) return;
-    
+    if (!confirm(`Konfirmasi verifikasi dokumen?`)) return;
     setProcessingDoc(docId);
-
     try {
       const { data: auth } = await supabase.auth.getUser();
-      
-      const { error } = await supabase
-        .from('seminar_documents')
-        .update({ 
-          status: newStatus, 
-          verified_at: new Date().toISOString(),
-          verified_by: auth.user?.id 
-        })
-        .eq('id', docId);
-
-      if (error) throw error;
-      
-      // Refresh data agar UI update otomatis
+      await supabase.from('seminar_documents').update({ 
+        status: newStatus, verified_at: new Date().toISOString(), verified_by: auth.user?.id 
+      }).eq('id', docId);
       await fetchData(); 
-      // alert(`Dokumen berhasil ${newStatus === 'Lengkap' ? 'diverifikasi' : 'ditolak'}`);
-    } catch (e: any) {
-      alert("Gagal update status: " + e.message);
-    } finally {
-      setProcessingDoc(null);
-    }
+    } catch (e) { alert("Gagal update."); } finally { setProcessingDoc(null); setActiveDropdownId(null); }
   };
 
-  // ================= HELPERS =================
+  const validCount = documents.filter(d => d.status === 'Lengkap').length;
+  const progressPercent = Math.round((validCount / REQUIRED_DOCS.length) * 100);
 
-  // Mencari data dokumen di state berdasarkan ID dokumen (misal: 'transkrip_nilai')
-  const getDocData = (docIdName: string) => {
-    return documents.find(d => d.nama_dokumen === docIdName) || null;
-  };
-
-  const formatDate = (dateStr: string) => {
-    if (!dateStr) return "-";
-    return new Date(dateStr).toLocaleDateString("id-ID", {
-      day: "numeric", month: "long", year: "numeric"
-    });
-  };
-
-  // ================= RENDER UI =================
-
-  if (loading) return <div className="flex h-screen bg-[#F8F9FB] items-center justify-center text-gray-400">Memuat data...</div>;
-  if (!student) return <div className="flex h-screen bg-[#F8F9FB] items-center justify-center text-gray-400">Data tidak ditemukan.</div>;
+  if (loading) return <div className="flex h-screen items-center justify-center bg-[#F4F7FE] text-blue-600 font-black animate-pulse uppercase tracking-[0.3em]">Loading System...</div>;
 
   return (
-    <div className="flex h-screen bg-[#F8F9FB] font-sans text-slate-700 overflow-hidden">
+    <div className="flex h-screen bg-[#F4F7FE] font-sans text-slate-700 overflow-hidden uppercase tracking-tighter">
       <SidebarTendik />
 
       <div className="flex-1 ml-64 flex flex-col h-full">
-        
-        {/* HEADER */}
-        <header className="h-20 bg-white border-b border-gray-100 flex items-center justify-between px-8 sticky top-0 z-20 shrink-0">
-          <div className="relative w-96">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300" size={18} />
-            <input type="text" placeholder="Search" className="w-full pl-11 pr-4 py-2.5 bg-gray-50 border border-gray-100 rounded-lg text-sm focus:outline-none" />
-          </div>
+        {/* Header Tetap Sama */}
+        <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
           <div className="flex items-center gap-4">
-             <Bell size={20} className="text-gray-400" />
+            <button onClick={() => router.back()} className="p-2.5 bg-slate-100 hover:bg-white border border-transparent hover:border-slate-200 rounded-xl transition-all group">
+              <ArrowLeft size={20} className="text-slate-500 group-hover:text-blue-600" />
+            </button>
+            <span className="text-sm font-black tracking-[0.2em] text-slate-400">Panel Kendali Tendik</span>
+          </div>
+          <div className="flex items-center gap-6">
+            <span className="text-xs font-black tracking-[0.4em] text-blue-600 border-r border-slate-200 pr-6 uppercase">Simpro</span>
+            <Bell size={20} className="text-slate-400" />
           </div>
         </header>
 
-        {/* CONTENT */}
-        <main className="flex-1 p-8 overflow-y-auto">
-          
-          {/* Header Info Mahasiswa */}
-          <div className="mb-8">
-            <div className="flex items-center gap-4 mb-2">
-              <button onClick={() => router.back()} className="p-1 hover:bg-gray-100 rounded-full transition">
-                <ArrowLeft size={24} className="text-gray-400 hover:text-gray-700" />
-              </button>
-              <h1 className="text-2xl font-bold text-gray-900">{student.user.nama}</h1>
+        <main className="flex-1 p-10 overflow-y-auto custom-scrollbar">
+          {/* Profile Card Tetap Sama */}
+          <div className="mb-12 flex flex-col lg:flex-row lg:items-end justify-between gap-6">
+            <div>
+              <h1 className="text-4xl font-black text-slate-800 tracking-tight leading-none mb-4">{student?.user.nama}</h1>
+              <div className="flex items-center gap-4 text-slate-500">
+                <span className="px-3 py-1 bg-white rounded-lg border border-slate-200 text-[10px] font-black tracking-widest">{student?.user.npm}</span>
+                <span className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-blue-600"><Layers size={14}/> Mahasiswa Akhir</span>
+              </div>
             </div>
-            <p className="text-gray-400 font-medium text-sm ml-10 mb-4">NPM: {student.user.npm}</p>
-            <h2 className="text-lg font-bold text-gray-800 ml-10 leading-snug max-w-4xl bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
-              {student.judul}
-            </h2>
+            <div className="bg-white p-6 rounded-[2rem] border border-white shadow-xl shadow-slate-200/50 flex-1 max-w-2xl relative overflow-hidden group">
+              <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><FileText size={80}/></div>
+              <p className="text-[10px] font-black text-blue-600 mb-2 tracking-[0.2em]">Judul Skripsi Terdaftar</p>
+              <h2 className="text-lg font-black text-slate-800 leading-tight italic font-serif normal-case">"{student?.judul}"</h2>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 ml-11">
-            
-            {/* KOLOM KIRI */}
-            <div className="lg:col-span-2 space-y-8">
-              
-              {/* Card Tahap */}
-              <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-                <h3 className="text-lg font-bold text-gray-900 mb-4">Tahap Saat Ini</h3>
-                <div className="inline-flex items-center gap-2 px-4 py-2 bg-[#F9EFC7] text-[#8F7B46] rounded-full text-sm font-bold">
-                  <CheckCircle size={16} className="text-[#8F7B46]" />
-                  {tahap}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+            <div className="lg:col-span-8 space-y-10">
+              {/* PROGRESS STATS */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-white p-8 rounded-[2.5rem] border border-white shadow-xl shadow-slate-200/40 flex items-center gap-6">
+                  <div className="w-16 h-16 rounded-2xl bg-blue-600 flex items-center justify-center text-white shadow-lg shadow-blue-200">
+                    <ShieldCheck size={32}/>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Status Verifikasi</p>
+                    <p className="text-xl font-black text-slate-800">{validCount} / {REQUIRED_DOCS.length} Berkas</p>
+                  </div>
+                </div>
+                
+                {/* TAHAP SAAT INI - SEKARANG DINAMIS */}
+                <div className="bg-white p-8 rounded-[2.5rem] border border-white shadow-xl shadow-slate-200/40 flex items-center gap-6">
+                  <div className="w-16 h-16 rounded-2xl bg-emerald-500 flex items-center justify-center text-white shadow-lg shadow-emerald-200">
+                    <LayoutDashboard size={32}/>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Tahap Saat Ini</p>
+                    <p className="text-xl font-black text-emerald-600 uppercase">{tahap}</p>
+                  </div>
                 </div>
               </div>
 
-              {/* Card Verifikasi Dokumen */}
-              <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-                <div className="flex justify-between items-center mb-6">
-                  <h3 className="text-lg font-bold text-gray-900">Verifikasi Dokumen</h3>
-                  <span className="text-xs font-bold text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
-                    {documents.filter(d => d.status === 'Lengkap').length} / {REQUIRED_DOCS.length} Valid
-                  </span>
+              {/* Tabel Dokumen Tetap Sama */}
+              <div className="bg-white rounded-[3rem] border border-white shadow-2xl shadow-slate-200/40 overflow-visible">
+                <div className="p-8 border-b border-slate-50 bg-slate-50/30 flex items-center justify-between">
+                  <h3 className="text-lg font-black text-slate-800 uppercase tracking-tighter">Manajemen Berkas Seminar</h3>
+                  <div className="flex items-center gap-3">
+                    <span className="text-[10px] font-black text-slate-400">Progres</span>
+                    <div className="w-32 h-2 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-blue-600 transition-all duration-1000" style={{ width: `${progressPercent}%` }} />
+                    </div>
+                    <span className="text-xs font-black text-blue-600">{progressPercent}%</span>
+                  </div>
                 </div>
                 
-                <div className="space-y-4">
-                  {REQUIRED_DOCS.map((doc, idx) => {
-                    const data = getDocData(doc.id);
+                <div className="divide-y divide-slate-50">
+                  {REQUIRED_DOCS.map((doc) => {
+                    const data = documents.find(d => d.nama_dokumen === doc.id || d.nama_dokumen === doc.label) || null;
                     const hasFile = !!data?.file_url;
-                    const isProcessing = processingDoc === data?.id;
                     
                     return (
-                      <div key={idx} className="flex items-center justify-between py-3 border-b border-gray-50 last:border-0 hover:bg-gray-50 px-3 rounded-lg transition-colors">
-                        
-                        {/* Nama Dokumen & Status */}
-                        <div className="flex items-center gap-3 flex-1">
-                          <div className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center ${
-                            data?.status === 'Lengkap' ? 'bg-green-100 text-green-600' : 
-                            data?.status === 'Ditolak' ? 'bg-red-100 text-red-600' :
-                            'bg-gray-200 text-gray-400'
+                      <div key={doc.id} className="flex items-center justify-between p-6 hover:bg-blue-50/20 transition-all group relative">
+                        <div className="flex items-center gap-5">
+                          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${
+                            data?.status === 'Lengkap' ? 'bg-emerald-100 text-emerald-600 shadow-inner' : 
+                            data?.status === 'Ditolak' ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-300'
                           }`}>
-                            {data?.status === 'Lengkap' ? <CheckCircle size={16} /> : <FileText size={16} />}
+                            {data?.status === 'Lengkap' ? <CheckCircle size={24} /> : <FileText size={24} />}
                           </div>
                           <div>
-                            <p className="text-sm font-bold text-gray-700">{doc.label}</p>
-                            <p className="text-[10px] text-gray-400 mt-0.5">
-                              {data ? 
-                                (data.status === 'Lengkap' ? 'Terverifikasi' : 
-                                 data.status === 'Ditolak' ? 'Ditolak' : 'Menunggu Verifikasi') 
-                                : "Belum diunggah"}
-                            </p>
+                            <p className="text-sm font-black text-slate-700 uppercase tracking-tight">{doc.label}</p>
+                            <div className="flex items-center gap-2 mt-1">
+                              {data ? (
+                                <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded ${
+                                  data.status === 'Lengkap' ? 'text-emerald-600 bg-emerald-50' : 
+                                  data.status === 'Ditolak' ? 'text-red-600 bg-red-50' : 'text-amber-600 bg-amber-50'
+                                }`}>
+                                  {data.status === 'Lengkap' ? 'Verified' : data.status === 'Ditolak' ? 'Rejected' : 'Pending'}
+                                </span>
+                              ) : (
+                                <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">Empty</span>
+                              )}
+                            </div>
                           </div>
                         </div>
 
-                        {/* Action Buttons */}
-                        <div className="flex items-center gap-2">
-                          
-                          {/* 1. VIEW FILE (Jika ada file) */}
-                          {hasFile && (
-                            <button 
-                              onClick={() => handleViewFile(data!.file_url)}
-                              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition shadow-sm"
-                              title="Lihat Dokumen"
-                            >
-                              <Eye size={14} /> 
-                              Lihat
-                            </button>
-                          )}
+                        <div className="flex items-center gap-3 dropdown-container">
+                          {hasFile ? (
+                            <div className="relative">
+                              <button 
+                                onClick={() => setActiveDropdownId(activeDropdownId === data.id ? null : data.id)}
+                                className={`p-3 rounded-xl border transition-all ${activeDropdownId === data.id ? 'bg-blue-600 border-blue-600 text-white shadow-xl' : 'bg-white text-slate-300 border-slate-100 hover:border-blue-400 hover:text-blue-600'}`}
+                              >
+                                <MoreHorizontal size={20} />
+                              </button>
 
-                          {/* 2. VERIFIKASI / STATUS */}
-                          {data?.status === 'Lengkap' ? (
-                            <span className="px-3 py-1.5 text-[10px] font-bold text-green-700 bg-green-50 border border-green-200 rounded-lg uppercase tracking-wide">
-                              Valid
-                            </span>
-                          ) : hasFile ? (
-                            // Jika belum lengkap & ada file, tampilkan tombol Approve/Reject
-                            <>
-                              <button 
-                                onClick={() => handleVerify(data!.id, 'Lengkap')}
-                                disabled={isProcessing}
-                                className="flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white text-xs font-bold rounded-lg hover:bg-green-700 transition shadow-sm disabled:opacity-50"
-                                title="Setujui"
-                              >
-                                <Check size={14} />
-                              </button>
-                              
-                              <button 
-                                onClick={() => handleVerify(data!.id, 'Ditolak')}
-                                disabled={isProcessing}
-                                className="flex items-center gap-1 px-3 py-1.5 bg-red-500 text-white text-xs font-bold rounded-lg hover:bg-red-600 transition shadow-sm disabled:opacity-50"
-                                title="Tolak"
-                              >
-                                <X size={14} />
-                              </button>
-                            </>
+                              {activeDropdownId === data.id && (
+                                <div className="absolute right-0 top-12 w-60 bg-white rounded-[1.5rem] shadow-2xl border border-slate-50 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                  <div className="p-2 space-y-1">
+                                    <button onClick={() => handleActionFile(data.file_url, false)} className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-black text-slate-600 hover:bg-slate-50 rounded-xl transition uppercase tracking-widest">
+                                      <Eye size={16} className="text-slate-400" /> Lihat Berkas
+                                    </button>
+                                    <button onClick={() => handleActionFile(data.file_url, true)} className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-black text-slate-600 hover:bg-slate-50 rounded-xl transition uppercase tracking-widest">
+                                      <Download size={16} className="text-slate-400" /> Unduh PDF
+                                    </button>
+                                    <div className="h-px bg-slate-50 my-1 mx-2" />
+                                    <button onClick={() => handleVerify(data.id, 'Lengkap')} className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-black text-emerald-600 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition uppercase tracking-widest">
+                                      <CheckCircle size={16} /> Verifikasi
+                                    </button>
+                                    <button onClick={() => handleVerify(data.id, 'Ditolak')} className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-black text-red-600 hover:bg-red-50 rounded-xl transition uppercase tracking-widest">
+                                      <CheckCircle size={16} /> Tolak Berkas
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           ) : (
-                            <span className="px-3 py-1.5 bg-gray-100 text-gray-400 text-[10px] font-bold rounded-lg border border-gray-200">
-                              -
-                            </span>
+                            <span className="text-[10px] font-black text-slate-200 uppercase tracking-widest">No Action</span>
                           )}
-
                         </div>
                       </div>
                     );
@@ -370,50 +323,30 @@ export default function DetailProgresTendikPage() {
               </div>
             </div>
 
-            {/* KOLOM KANAN */}
-            <div className="lg:col-span-1 space-y-8">
-              
-              {/* Riwayat Bimbingan */}
-              <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-                <h3 className="text-lg font-bold text-gray-900 mb-6">Riwayat Bimbingan</h3>
-                <div className="space-y-6">
-                  {bimbingan.length === 0 && <p className="text-sm text-gray-400 italic">Belum ada bimbingan.</p>}
-                  {bimbingan.map((sesi) => (
-                    <div key={sesi.id} className="flex gap-4 items-start">
-                      <div className="mt-1 shrink-0">
-                        <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center text-green-600">
-                          <FileText size={16} />
-                        </div>
-                      </div>
-                      <div>
-                        <p className="text-sm font-bold text-gray-800">Sesi {sesi.sesi_ke}</p>
-                        <p className="text-xs text-gray-500 font-medium">{sesi.dosen_nama.split(',')[0]}</p>
-                        <p className="text-[10px] text-gray-400 mt-1">{formatDate(sesi.tanggal)}</p>
+            {/* Riwayat Konsultasi Sidebar Tetap Sama */}
+            <div className="lg:col-span-4 space-y-8">
+              <div className="bg-slate-900 rounded-[3rem] p-8 shadow-2xl text-white sticky top-28 overflow-hidden">
+                <div className="absolute -right-4 -top-4 opacity-10 rotate-12"><Clock size={120}/></div>
+                <h3 className="text-xs font-black text-blue-400 uppercase tracking-[0.2em] mb-8 relative z-10">Riwayat Konsultasi</h3>
+                <div className="space-y-8 relative z-10">
+                  {bimbingan.length === 0 ? (
+                    <div className="py-10 text-center opacity-30 italic font-black uppercase tracking-widest text-xs">No guidance record</div>
+                  ) : bimbingan.map((sesi, idx) => (
+                    <div key={idx} className="relative pl-8 border-l-2 border-white/10 last:border-0 pb-4">
+                      <div className="absolute -left-[9px] top-0 w-4 h-4 bg-blue-500 rounded-full border-4 border-slate-900" />
+                      <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Sesi {sesi.sesi_ke}</p>
+                      <p className="text-sm font-black uppercase tracking-tight mb-2">{sesi.dosen_nama.split(',')[0]}</p>
+                      <div className="flex items-center gap-2 text-white/40">
+                        <Clock size={12} />
+                        <span className="text-[10px] font-bold">{new Date(sesi.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
                       </div>
                     </div>
                   ))}
                 </div>
-              </div>
-
-              {/* Riwayat Aktivitas */}
-              <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-                <h3 className="text-lg font-bold text-gray-900 mb-6">Aktivitas Terkini</h3>
-                <div className="space-y-6">
-                  {activities.length === 0 && <p className="text-sm text-gray-400 italic">Belum ada aktivitas.</p>}
-                  {activities.map((act, idx) => (
-                    <div key={idx} className="flex gap-4">
-                      <div className="mt-1">
-                        <div className="w-8 h-8 rounded bg-gray-100 flex items-center justify-center text-gray-500"><Clock size={16} /></div>
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-gray-800 mb-0.5">{formatDate(act.date)}</p>
-                        <p className="text-xs text-gray-600 leading-tight">{act.desc}</p>
-                      </div>
-                    </div>
-                  ))}
+                <div className="mt-10 p-4 bg-white/5 rounded-2xl border border-white/10 text-center text-[9px] font-black text-white/30 uppercase tracking-[0.3em]">
+                  System Verified v1.0
                 </div>
               </div>
-
             </div>
           </div>
         </main>

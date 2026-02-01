@@ -60,25 +60,19 @@ export default function PengajuanSeminarPage() {
   return (
     <div className="min-h-screen bg-[#F4F7FE] font-sans text-slate-700">
       
-      {/* --- HEADER (Glassmorphism Effect) --- */}
-      <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20">
-        <div className="relative w-full max-w-md group">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" size={20} />
-          <input 
-            type="text" 
-            placeholder="Cari mahasiswa atau judul seminar..." 
-            className="w-full pl-12 pr-4 py-2.5 bg-slate-100 border-transparent border focus:bg-white focus:border-blue-400 rounded-xl text-sm outline-none transition-all shadow-inner"
-          />
-        </div>
+     <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
+          <div className="flex items-center gap-6">
+            <div className="relative w-72 group">
+            </div>
+          </div>
 
-        <div className="flex items-center gap-5">
-          <button className="p-2.5 text-slate-400 hover:bg-slate-100 rounded-xl transition-all relative">
-            <Bell size={22} />
-            <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
-          </button>
-          <div className="h-10 w-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold shadow-lg shadow-blue-200 ml-2 uppercase">K</div>
-        </div>
-      </header>
+          <div className="flex items-center gap-6">
+            {/* Minimalist SIMPRO Text */}
+            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
+              Simpro
+            </span>
+          </div>
+        </header>
 
       {/* --- MAIN CONTENT --- */}
       <main className="p-10 max-w-[1400px] mx-auto w-full">
@@ -141,11 +135,11 @@ export default function PengajuanSeminarPage() {
                       <td className="px-8 py-8">
                         <div className="flex items-center gap-4">
                           <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-black group-hover:bg-blue-600 group-hover:text-white transition-all shrink-0 uppercase">
-                            {item.proposal[0]?.user[0]?.nama?.charAt(0) || "?"}
+                            {item.proposal?.user?.nama?.charAt(0) || "?"}
                           </div>
                           <div className="min-w-0">
                               <p className="text-sm font-black text-slate-800 leading-none truncate uppercase tracking-tight">
-                                {item.proposal[0]?.user[0]?.nama || "-"}
+                                {item.proposal?.user?.nama || "-"}
                               </p>
                               <div className="flex items-center gap-1.5 mt-1.5 text-blue-500 font-bold text-[10px] uppercase tracking-widest">
                                 <User size={10} /> Mahasiswa Aktif
@@ -157,21 +151,21 @@ export default function PengajuanSeminarPage() {
                       {/* NPM */}
                       <td className="px-8 py-8 text-center">
                         <span className="text-xs font-bold text-slate-400 tracking-tighter tabular-nums">
-                          {item.proposal[0]?.user[0]?.npm || "-"}
+                          {item.proposal?.user?.npm || "-"}
                         </span>
                       </td>
 
                       {/* JUDUL */}
                       <td className="px-8 py-8">
                         <p className="text-[13px] font-bold text-slate-600 leading-relaxed italic line-clamp-2 pr-6">
-                          "{item.proposal[0]?.judul || "-"}"
+                          "{item.proposal?.judul || "-"}"
                         </p>
                       </td>
 
                       {/* BIDANG */}
                       <td className="px-8 py-8 text-center">
                         <span className="inline-block px-3 py-1 bg-slate-100 text-slate-500 text-[10px] font-black uppercase tracking-wider rounded-lg border border-slate-200">
-                          {item.proposal[0]?.bidang || "-"}
+                          {item.proposal?.bidang || "-"}
                         </span>
                       </td>
 

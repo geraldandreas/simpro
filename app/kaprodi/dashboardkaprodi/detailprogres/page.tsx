@@ -1,202 +1,238 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { 
-  Search, 
-  Bell, 
-  Check, 
-  BookOpen, 
-  User, 
-  MessageCircle,
-  ArrowLeft
+  Search, Bell, ArrowLeft, FileText, 
+  CheckCircle, Eye, Check, X, Download, 
+  ShieldCheck, Clock, Layers, LayoutDashboard
 } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
+import SidebarTendik from "@/components/sidebar-tendik"; 
 
-// --- MOCK DATA ---
-const STUDENT_DATA = {
-  name: "Gerald Christopher Andreas",
-  npm: "140810220014",
-  judul: "Rancang Bangun Sistem Informasi Manajemen Sidang Skripsi Menggunakan Metode Extreme Programming",
-};
+// ================= TYPES =================
 
-const TIMELINE_STEPS = [
-  { label: "Pengajuan Proposal", status: "completed" },
-  { label: "Persetujuan Proposal", status: "completed" },
-  { label: "Proses Bimbingan", status: "current" },
-  { label: "Persetujuan Kesiapan Seminar", status: "upcoming" },
-  { label: "Unggah Dokumen Seminar", status: "upcoming" },
-  { label: "Verifikasi Tendik", status: "upcoming" },
-  { label: "Seminar", status: "upcoming" },
-  { label: "Perbaikan Pasca Seminar", status: "upcoming" },
-  { label: "Sidang Skripsi", status: "upcoming" },
-];
-
-const GUIDANCE_HISTORY = [
-  { session: "Sesi 1", topic: "Bimbingan dengan Dr. Juli", date: "20 November 2025" },
-  { session: "Sesi 2", topic: "Bimbingan dengan Dr. Juli", date: "25 November 2025" },
-  { session: "Sesi 3", topic: "Bimbingan dengan Dr. Juli", date: "1 Oktober 2025" },
-];
-
-const SUPERVISORS = [
-  { name: "Dr. Juli Rejito, M.Kom", role: "Pembimbing Utama" },
-  { name: "Rudi Rosadi, S.Si, M.Kom", role: "Co-Pembimbing" },
-];
-
-export default function DetailProgresPage() {
-  const router = useRouter();
-
-  return (
-    <div className="min-h-screen bg-[#F8F9FB] flex flex-col font-sans text-slate-700">
-      
-      {/* --- HEADER --- */}
-      <header className="h-20 bg-white border-b border-gray-100 flex items-center justify-between px-8 sticky top-0 z-20">
-        <div className="relative w-96">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300" size={20} />
-          <input 
-            type="text" 
-            placeholder="Search" 
-            className="w-full pl-12 pr-4 py-2.5 bg-gray-50 border border-gray-100 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-100 transition-all"
-          />
-        </div>
-
-        <button className="relative p-2 hover:bg-gray-50 rounded-full transition-colors">
-          <Bell size={22} className="text-gray-400" />
-          <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
-        </button>
-      </header>
-
-      {/* --- MAIN CONTENT --- */}
-      <main className="flex-1 p-8 pb-24">
-        
-        {/* ✅ BACK BUTTON (sesuai referensi) */}
-        <div className="mb-6">
-          <button
-            onClick={() => router.back()}
-            className="w-11 h-11 bg-white border border-gray-200 rounded-xl flex items-center justify-center text-gray-600 hover:text-blue-600 hover:border-blue-200 transition-all shadow-sm"
-          >
-            <ArrowLeft size={20} />
-          </button>
-        </div>
-
-        {/* Student Info Header */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">{STUDENT_DATA.name}</h1>
-          <p className="text-gray-500 text-lg mb-4">NPM: {STUDENT_DATA.npm}</p>
-          <h2 className="text-xl font-bold text-gray-900 leading-relaxed max-w-4xl">
-            {STUDENT_DATA.judul}
-          </h2>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-          
-          {/* KOLOM KIRI */}
-          <div className="lg:col-span-2 border border-gray-200 rounded-2xl p-8 bg-white shadow-sm">
-            <h3 className="text-xl font-bold text-gray-900 mb-8">Linimasa Progres Skripsi</h3>
-            
-            <div className="relative pl-2">
-              <div className="absolute left-[15px] top-2 bottom-2 w-0.5 bg-gray-200" />
-
-              <div className="space-y-8">
-                {TIMELINE_STEPS.map((step, index) => (
-                  <TimelineItem key={index} label={step.label} status={step.status as any} />
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* KOLOM KANAN */}
-          <div className="lg:col-span-1 space-y-8">
-            
-            {/* Riwayat */}
-            <div className="border border-gray-200 rounded-2xl p-6 bg-white shadow-sm">
-              <h3 className="text-lg font-bold text-gray-900 mb-6">Riwayat Bimbingan</h3>
-              <div className="space-y-6">
-                {GUIDANCE_HISTORY.map((history, idx) => (
-                  <div key={idx} className="flex gap-4 pb-4 border-b border-gray-100 last:border-0 last:pb-0">
-                    <div className="w-10 h-10 rounded bg-green-50 text-green-600 flex items-center justify-center shrink-0">
-                      <BookOpen size={20} />
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold text-gray-800">
-                        <span className="font-extrabold text-gray-900">{history.session} :</span> {history.topic}
-                      </p>
-                      <p className="text-xs text-gray-400 mt-1">{history.date}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <button className="w-full text-center text-blue-600 text-sm font-bold mt-6 hover:underline">
-                Lihat Semua
-              </button>
-            </div>
-
-            {/* Dosen */}
-            <div className="border border-gray-200 rounded-2xl p-6 bg-white shadow-sm">
-              <h3 className="text-lg font-bold text-gray-900 mb-6">Dosen Pembimbing</h3>
-              <div className="space-y-6">
-                {SUPERVISORS.map((dosen, idx) => (
-                  <div key={idx} className="flex items-center gap-4 pb-4 border-b border-gray-100 last:border-0 last:pb-0">
-                    <div className="w-12 h-12 rounded-full bg-gray-200 overflow-hidden shrink-0">
-                       <User size={48} className="text-gray-400 relative top-2 left-0" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold text-gray-900">{dosen.name}</p>
-                      <p className="text-xs text-gray-500 font-medium">{dosen.role}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-          </div>
-        </div>
-      </main>
-
-      {/* Floating Chat Button */}
-      <button className="fixed bottom-8 right-8 w-14 h-14 bg-[#345d8a] hover:bg-[#2a4a6e] text-white rounded-full shadow-lg flex items-center justify-center transition-transform hover:scale-105">
-        <MessageCircle size={28} />
-      </button>
-
-    </div>
-  );
+interface StudentDetail {
+  id: string;
+  judul: string;
+  user: {
+    nama: string;
+    npm: string;
+  };
 }
 
-// --- TIMELINE ITEM ---
-function TimelineItem({ label, status }: { label: string; status: 'completed' | 'current' | 'upcoming' }) {
-  let iconContent;
-  let labelClass = "text-gray-500 font-medium";
+interface DocumentData {
+  id: string;
+  nama_dokumen: string;
+  status: string; 
+  created_at: string;
+  file_url: string;
+}
 
-  if (status === 'completed') {
-    iconContent = (
-      <div className="w-8 h-8 rounded-full bg-[#56a789] flex items-center justify-center z-10 relative border-4 border-white">
-        <Check size={16} className="text-white" strokeWidth={3} />
-      </div>
-    );
-    labelClass = "text-gray-800 font-medium";
-  } 
-  else if (status === 'current') {
-    iconContent = (
-      <div className="w-8 h-8 rounded-full bg-[#eab308] flex items-center justify-center z-10 relative border-4 border-white shadow-sm">
-        <div className="w-3 h-3 bg-white rounded-full" />
-      </div>
-    );
-    labelClass = "text-gray-900 font-bold";
-  } 
-  else {
-    iconContent = (
-      <div className="w-8 h-8 rounded-full bg-gray-300 z-10 relative border-4 border-white"></div>
-    );
-    labelClass = "text-gray-400 font-medium";
-  }
+interface GuidanceSession {
+  id: string;
+  sesi_ke: number;
+  tanggal: string;
+  dosen_nama: string;
+}
+
+const REQUIRED_DOCS = [
+  { id: 'berita_acara_bimbingan', label: "Berita Acara Bimbingan" },
+  { id: 'transkrip_nilai', label: "Transkrip Nilai" },
+  { id: 'matriks_perbaikan', label: "Formulir Matriks Perbaikan Skripsi" },
+  { id: 'toefl', label: "Sertifikat TOEFL" },
+  { id: 'print_jurnal', label: "Print Out Jurnal Skripsi" },
+  { id: 'sertifikat_publikasi', label: "Sertifikat Publikasi / Jurnal" },
+  { id: 'pengajuan_sidang', label: "Formulir Pengajuan Sidang" },
+  { id: 'bukti_bayar', label: "Bukti Pembayaran Registrasi" },
+  { id: 'bebas_pus_univ', label: "Bebas Pinjaman Perpustakaan Univ" },
+  { id: 'bebas_pus_fak', label: "Bebas Pinjaman Perpustakaan Fak" },
+  { id: 'bukti_pengajuan_judul', label: "Bukti pengajuan Topik/Judul" },
+  { id: 'skpi', label: "SKPI" },
+  { id: 'biodata_sidang', label: "Biodata Sidang" },
+  { id: 'foto', label: "Foto Hitam Putih Cerah" },
+  { id: 'pengantar_ijazah', label: "Surat Pengantar Ijazah" },
+  { id: 'print_skripsi', label: "Print Out Skripsi 3 buah" },
+  { id: 'flyer', label: "FLYER Skripsi" },
+];
+
+const normalizeStoragePath = (rawPath: string) => {
+  if (!rawPath) return "";
+  return rawPath.replace(/^docseminar\//gi, "").trim().replace(/\\/g, "/").replace(/\/+/g, "/").replace(/^\/+/, "");
+};
+
+export default function DetailProgresTendikPage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const proposalId = searchParams.get("id");
+
+  const [student, setStudent] = useState<StudentDetail | null>(null);
+  const [documents, setDocuments] = useState<DocumentData[]>([]);
+  const [bimbingan, setBimbingan] = useState<GuidanceSession[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [tahap, setTahap] = useState("Proses Bimbingan");
+  const [processingDoc, setProcessingDoc] = useState<string | null>(null);
+
+  const fetchData = async () => {
+    if (!proposalId) return;
+    try {
+      const { data: propData, error: propError } = await supabase
+        .from("proposals")
+        .select(`
+          id, judul,
+          profiles!proposals_user_id_fkey (nama, npm), 
+          seminar_requests ( tipe, status )
+        `)
+        .eq("id", proposalId)
+        .single();
+
+      if (propError) throw propError;
+      const profile = Array.isArray(propData.profiles) ? propData.profiles[0] : propData.profiles;
+      setStudent({
+        id: propData.id,
+        judul: propData.judul,
+        user: { nama: profile?.nama || "Tanpa Nama", npm: profile?.npm || "-" }
+      });
+
+      const seminar = propData.seminar_requests?.find((r: any) => r.tipe === 'seminar');
+      if (seminar?.status === 'Lengkap') setTahap("Kesiapan Seminar");
+      else if (seminar?.status === 'Menunggu Verifikasi') setTahap("Verifikasi Berkas");
+      else setTahap("Proses Bimbingan");
+
+      const { data: docData } = await supabase.from("seminar_documents").select("*").eq("proposal_id", proposalId);
+      setDocuments(docData || []);
+
+      const { data: bimData } = await supabase
+        .from("guidance_sessions")
+        .select(`id, sesi_ke, tanggal, dosen:profiles!guidance_sessions_dosen_id_fkey (nama)`)
+        .eq("proposal_id", proposalId)
+        .order("tanggal", { ascending: false });
+
+      setBimbingan((bimData || []).map((b: any) => ({
+        id: b.id, sesi_ke: b.sesi_ke, tanggal: b.tanggal, dosen_nama: b.dosen?.nama || "-"
+      })));
+
+    } catch (err) { console.error(err); } finally { setLoading(false); }
+  };
+
+  useEffect(() => { fetchData(); }, [proposalId]);
+
+  const handleViewFile = async (rawPath: string) => {
+    if (!rawPath) return;
+    try {
+      const { data, error } = await supabase.storage.from('docseminar').createSignedUrl(normalizeStoragePath(rawPath), 3600); 
+      if (error || !data?.signedUrl) throw new Error();
+      window.open(data.signedUrl, '_blank');
+    } catch { alert("Gagal membuka berkas."); }
+  };
+
+  const handleVerify = async (docId: string, newStatus: string) => {
+    if (!confirm(`Konfirmasi verifikasi dokumen?`)) return;
+    setProcessingDoc(docId);
+    try {
+      const { data: auth } = await supabase.auth.getUser();
+      await supabase.from('seminar_documents').update({ 
+        status: newStatus, verified_at: new Date().toISOString(), verified_by: auth.user?.id 
+      }).eq('id', docId);
+      await fetchData(); 
+    } catch (e) { alert("Gagal update."); } finally { setProcessingDoc(null); }
+  };
+
+  const validCount = documents.filter(d => d.status === 'Lengkap').length;
+  const progressPercent = Math.round((validCount / REQUIRED_DOCS.length) * 100);
+
+  if (loading) return <div className="flex h-screen items-center justify-center bg-[#F4F7FE] text-blue-600 font-black animate-pulse uppercase tracking-[0.3em]">Loading System...</div>;
 
   return (
-    <div className="flex items-center gap-6 relative">
-      <div className="shrink-0 flex items-center justify-center w-8">
-        {iconContent}
+    <div className="flex h-screen bg-[#F4F7FE] font-sans text-slate-700 overflow-hidden uppercase tracking-tighter">
+      <SidebarTendik />
+
+      <div className="flex-1 ml-64 flex flex-col h-full">
+        {/* HEADER */}
+       <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
+                         <div className="flex items-center gap-6">
+                           <div className="relative w-72 group">
+                             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" size={16} />
+                             <input 
+                               type="text" 
+                               placeholder="Cari data..." 
+                               className="w-full pl-10 pr-4 py-2 bg-slate-100 border-transparent border focus:bg-white focus:border-blue-400 rounded-xl text-xs outline-none transition-all shadow-inner uppercase tracking-widest"
+                             />
+                           </div>
+                         </div>
+               
+                         <div className="flex items-center gap-6">
+                           {/* Minimalist SIMPRO Text */}
+                           <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
+                             Simpro
+                           </span>
+                         </div>
+                       </header>
+
+        <main className="flex-1 p-10 overflow-y-auto custom-scrollbar">
+          {/* PROFILE CARD */}
+          <div className="mb-12 flex flex-col lg:flex-row lg:items-end justify-between gap-6">
+            <div>
+              <h1 className="text-4xl font-black text-slate-800 tracking-tight leading-none mb-4">{student?.user.nama}</h1>
+              <div className="flex items-center gap-4 text-slate-500">
+                <span className="px-3 py-1 bg-white rounded-lg border border-slate-200 text-[10px] font-black tracking-widest">{student?.user.npm}</span>
+                <span className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-blue-600"><Layers size={14}/> Mahasiswa Akhir</span>
+              </div>
+            </div>
+            <div className="bg-white p-6 rounded-[2rem] border border-white shadow-xl shadow-slate-200/50 flex-1 max-w-2xl relative overflow-hidden group">
+              <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><FileText size={80}/></div>
+              <p className="text-[10px] font-black text-blue-600 mb-2 tracking-[0.2em]">Judul Skripsi Terdaftar</p>
+              <h2 className="text-lg font-black text-slate-800 leading-tight italic font-serif normal-case">"{student?.judul}"</h2>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+            {/* MAIN CONTENT LEFT */}
+            <div className="lg:col-span-8 space-y-10">
+              
+              {/* PROGRESS STATS */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                
+                <div className="bg-white p-8 rounded-[2.5rem] border border-white shadow-xl shadow-slate-200/40 flex items-center gap-6">
+                  <div className="w-16 h-16 rounded-2xl bg-emerald-500 flex items-center justify-center text-white shadow-lg shadow-emerald-200">
+                    <LayoutDashboard size={32}/>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Tahap Saat Ini</p>
+                    <p className="text-xl font-black text-emerald-600">{tahap}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* RIGHT SIDEBAR */}
+            <div className="lg:col-span-4 space-y-8">
+              <div className="bg-slate-900 rounded-[3rem] p-8 shadow-2xl text-white sticky top-28 overflow-hidden">
+                <div className="absolute -right-4 -top-4 opacity-10 rotate-12"><Clock size={120}/></div>
+                <h3 className="text-xs font-black text-blue-400 uppercase tracking-[0.2em] mb-8 relative z-10">Riwayat Konsultasi</h3>
+                <div className="space-y-8 relative z-10">
+                  {bimbingan.length === 0 ? (
+                    <div className="py-10 text-center opacity-30 italic font-black uppercase tracking-widest text-xs">No guidance record</div>
+                  ) : bimbingan.map((sesi, idx) => (
+                    <div key={idx} className="relative pl-8 border-l-2 border-white/10 last:border-0 pb-4">
+                      <div className="absolute -left-[9px] top-0 w-4 h-4 bg-blue-500 rounded-full border-4 border-slate-900" />
+                      <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Sesi {sesi.sesi_ke}</p>
+                      <p className="text-sm font-black uppercase tracking-tight mb-2">{sesi.dosen_nama.split(',')[0]}</p>
+                      <div className="flex items-center gap-2 text-white/40">
+                        <Clock size={12} />
+                        <span className="text-[10px] font-bold">{new Date(sesi.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-10 p-4 bg-white/5 rounded-2xl border border-white/10 text-center text-[9px] font-black text-white/30 uppercase tracking-[0.3em]">
+                  System Verified v1.0
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
       </div>
-      <span className={`text-sm ${labelClass}`}>
-        {label}
-      </span>
     </div>
   );
 }

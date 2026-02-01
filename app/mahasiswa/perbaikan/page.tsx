@@ -187,15 +187,18 @@ export default function PerbaikanPascaSeminar() {
 
       <main className="flex-1 ml-64 flex flex-col h-screen overflow-y-auto">
         {/* HEADER */}
-          <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
-          <div className="relative w-96 group">
-          </div>
-          <div className="flex items-center gap-4">
-            <button className="p-2.5 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors relative">
-              <Bell size={20} className="text-slate-600" />
-              <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
-            </button>
+         <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
+          <div className="flex items-center gap-6">
+            <div className="relative w-72 group">
             </div>
+          </div>
+
+          <div className="flex items-center gap-6">
+            {/* Minimalist SIMPRO Text */}
+            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
+              Simpro
+            </span>
+          </div>
         </header>
 
         <div className="p-10 max-w-[1400px] mx-auto w-full">

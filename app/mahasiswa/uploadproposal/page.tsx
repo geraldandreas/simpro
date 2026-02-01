@@ -13,7 +13,8 @@ import {
   Trash2, 
   Info,
   UserCheck,
-  ShieldCheck
+  ShieldCheck,
+  Lock
 } from "lucide-react";
 
 // --- TYPES ---
@@ -23,18 +24,13 @@ interface ProposalFile {
   uploadedAt: string;
   status: string;
   storagePath?: string; 
-  id?: string;           
+  id?: string; 
+  is_locked?: boolean;          
 }
 
 interface Dosen {
   id: string;
   nama: string;
-}
-
-interface RecommendationRow {
-  proposal_id: string;
-  dosen_id: string;
-  tipe: "pembimbing1" | "pembimbing2";
 }
 
 export default function UnggahProposal() {
@@ -73,6 +69,7 @@ export default function UnggahProposal() {
           status: propData.status,
           storagePath: propData.file_path,
           id: propData.id,
+          is_locked: propData.is_locked, 
         });
         setJudulSkripsi(propData.judul);
         setBidangSkripsi(propData.bidang);
@@ -118,6 +115,7 @@ export default function UnggahProposal() {
       url,
       uploadedAt: new Date().toLocaleDateString("id-ID"),
       status: "Draft (Belum Submit)", 
+      is_locked: false
     });
     setPreviewUrl(url);
   };
@@ -141,11 +139,12 @@ export default function UnggahProposal() {
         bidang: bidangSkripsi,
         file_path: storagePath,
         status: "Menunggu Persetujuan Dosbing",
+        is_locked: true, // Lock otomatis saat simpan
       }).select().single();
 
       if (insertError) throw insertError;
-      setProposal({ ...proposal, storagePath, id: data.id, status: data.status });
-      alert("✅ Proposal berhasil disimpan!");
+      setProposal({ ...proposal, storagePath, id: data.id, status: data.status, is_locked: true });
+      alert("✅ Proposal berhasil disimpan dan dikunci!");
     } catch (error: any) {
       alert(`❌ Gagal: ${error.message}`);
     } finally {
@@ -183,7 +182,6 @@ export default function UnggahProposal() {
       const user = authData?.user;
       if (!user || !proposal?.id) return;
 
-      
       if (proposal.storagePath) {
         await supabase.storage.from("proposals").remove([proposal.storagePath]);
       }
@@ -210,13 +208,17 @@ export default function UnggahProposal() {
     <div className="min-h-screen bg-[#F3F4F6] font-sans flex text-slate-700">
       <Sidebar />
       <main className="flex-1 ml-64 transition-all duration-300">
-        {/* Header Updated: Removed Search Bar and Blue Initial Profile */}
-        <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-end px-10 sticky top-0 z-20">
-          <div className="flex items-center gap-4">
-                      <button className="p-2.5 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors relative">
-                        <Bell size={20} className="text-slate-600" />
-                        <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
-                      </button>
+       <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
+          <div className="flex items-center gap-6">
+            <div className="relative w-72 group">
+            </div>
+          </div>
+
+          <div className="flex items-center gap-6">
+            {/* Minimalist SIMPRO Text */}
+            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
+              Simpro
+            </span>
           </div>
         </header>
 
@@ -227,11 +229,19 @@ export default function UnggahProposal() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-            {/* --- LEFT COLUMN --- */}
             <div className="lg:col-span-8 space-y-8">
+              {/* LOCK ALERT */}
+              {proposal?.is_locked && (
+                <div className="bg-amber-50 border border-amber-100 p-4 rounded-2xl flex items-center gap-3 text-amber-700 animate-in fade-in duration-500">
+                  <Lock size={18} />
+                  <p className="text-xs font-bold uppercase tracking-tight">Dokumen dan data skripsi telah dikunci untuk proses review.</p>
+                </div>
+              )}
+
               <div className={`relative group transition-all ${isUploaded ? 'h-auto' : 'h-[400px]'}`}>
                 <div className={`h-full bg-white p-12 rounded-[2.5rem] border-2 border-dashed transition-all flex flex-col items-center justify-center text-center
-                  ${isUploaded ? 'border-blue-100 bg-blue-50/20' : 'border-slate-300 hover:border-blue-400 hover:bg-white'}`}>
+                  ${isUploaded ? 'border-blue-100 bg-blue-50/20' : 'border-slate-300 hover:border-blue-400 hover:bg-white'}
+                  ${proposal?.is_locked ? 'opacity-80' : ''}`}>
                   
                   <div className={`p-6 rounded-3xl mb-6 shadow-xl shadow-blue-100 transition-transform group-hover:scale-110
                     ${isUploaded ? 'bg-blue-600 text-white' : 'bg-white text-blue-500 border border-slate-100'}`}>
@@ -245,9 +255,16 @@ export default function UnggahProposal() {
                     Format file harus PDF dengan ukuran maksimal 5MB.
                   </p>
 
-                  <label className="bg-slate-900 text-white px-10 py-3.5 rounded-2xl font-bold shadow-lg shadow-slate-200 hover:bg-slate-800 transition cursor-pointer active:scale-95 flex items-center gap-2">
-                    {isUploaded ? "Ganti File" : "Pilih Dokumen"}
-                    <input type="file" accept="application/pdf" hidden onChange={(e) => e.target.files && handleSelectFile(e.target.files[0])} />
+                  <label 
+                    className={`px-10 py-3.5 rounded-2xl font-bold shadow-lg transition active:scale-95 flex items-center gap-2 
+                    ${proposal?.is_locked 
+                      ? 'bg-slate-200 text-slate-400 cursor-not-allowed' 
+                      : 'bg-slate-900 text-white hover:bg-slate-800 cursor-pointer'}`}
+                  >
+                    {isUploaded ? (proposal?.is_locked ? "Dokumen Terkunci" : "Ganti File") : "Pilih Dokumen"}
+                    {!proposal?.is_locked && (
+                      <input type="file" accept="application/pdf" hidden onChange={(e) => e.target.files && handleSelectFile(e.target.files[0])} />
+                    )}
                   </label>
                 </div>
               </div>
@@ -271,9 +288,11 @@ export default function UnggahProposal() {
                           {loading ? "Menyimpan..." : "SUBMIT SEKARANG"}
                         </button>
                       )}
-                      <button onClick={handleDelete} disabled={loading} className="p-3 bg-red-50 text-red-500 rounded-2xl hover:bg-red-100 transition active:scale-95">
-                        <Trash2 size={20} />
-                      </button>
+                      {!proposal.is_locked && (
+                        <button onClick={handleDelete} disabled={loading} className="p-3 bg-red-50 text-red-500 rounded-2xl hover:bg-red-100 transition active:scale-95">
+                          <Trash2 size={20} />
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -294,7 +313,6 @@ export default function UnggahProposal() {
               )}
             </div>
 
-            {/* --- RIGHT COLUMN --- */}
             <div className="lg:col-span-4 space-y-8">
               {isUploaded && proposal && (
                 <section className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm relative overflow-hidden">
@@ -328,8 +346,9 @@ export default function UnggahProposal() {
                     <textarea
                       value={judulSkripsi}
                       onChange={(e) => setJudulSkripsi(e.target.value)}
+                      disabled={proposal?.is_locked}
                       placeholder="Masukkan judul skripsi..."
-                      className="w-full border border-slate-200 rounded-2xl p-4 text-sm focus:ring-4 focus:ring-blue-50 focus:border-blue-400 bg-slate-50/50 outline-none transition-all min-h-[100px] resize-none"
+                      className="w-full border border-slate-200 rounded-2xl p-4 text-sm focus:ring-4 focus:ring-blue-50 focus:border-blue-400 bg-slate-50/50 outline-none transition-all min-h-[100px] resize-none disabled:cursor-not-allowed disabled:opacity-70"
                     />
                   </div>
 
@@ -339,13 +358,14 @@ export default function UnggahProposal() {
                       <select
                         value={bidangSkripsi}
                         onChange={(e) => setBidangSkripsi(e.target.value)}
-                        className="w-full border border-slate-200 rounded-2xl p-4 text-sm bg-slate-50/50 focus:ring-4 focus:ring-blue-50 focus:border-blue-400 outline-none appearance-none cursor-pointer transition-all"
+                        disabled={proposal?.is_locked}
+                        className="w-full border border-slate-200 rounded-2xl p-4 text-sm bg-slate-50/50 focus:ring-4 focus:ring-blue-50 focus:border-blue-400 outline-none appearance-none cursor-pointer transition-all disabled:cursor-not-allowed disabled:opacity-70"
                       >
                         {["AI", "Machine Learning", "Data Science", "Jaringan Komputer", "Internet of Things", "Cyber Security", "Rancang Bangun", "Lainnya"].map(opt => (
                           <option key={opt} value={opt}>{opt}</option>
                         ))}
                       </select>
-                      <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none transition-colors" size={18} />
+                      {!proposal?.is_locked && <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none transition-colors" size={18} />}
                     </div>
                   </div>
 
@@ -361,7 +381,7 @@ export default function UnggahProposal() {
                         <select
                           value={p.state}
                           onChange={(e) => p.setState(e.target.value)}
-                          disabled={isDosenSubmitted}
+                          disabled={isDosenSubmitted || proposal?.is_locked}
                           className="w-full border border-slate-200 rounded-2xl p-4 text-sm bg-slate-50/50 focus:ring-4 focus:ring-blue-50 focus:border-blue-400 outline-none appearance-none cursor-pointer disabled:bg-slate-100 disabled:text-slate-400 transition-all"
                         >
                           <option value="">-- Pilih Dosen --</option>
@@ -369,7 +389,7 @@ export default function UnggahProposal() {
                             <option key={dosen.id} value={dosen.id}>{dosen.nama}</option>
                           ))}
                         </select>
-                        {!isDosenSubmitted && <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />}
+                        {(!isDosenSubmitted && !proposal?.is_locked) && <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />}
                       </div>
                     </div>
                   ))}
@@ -380,7 +400,7 @@ export default function UnggahProposal() {
                     className={`w-full py-4 rounded-2xl text-xs font-black tracking-widest uppercase shadow-xl transition-all active:scale-95 mt-4
                       ${isDosenSubmitted 
                         ? "bg-green-100 text-green-600 shadow-none" 
-                        : "bg-blue-600 text-white shadow-blue-200 hover:bg-blue-700"}`}
+                        : "bg-blue-600 text-white shadow-blue-200 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"}`}
                   >
                     {isDosenSubmitted ? "Pengajuan Terkirim" : (loading ? "Memproses..." : "Ajukan Dosen Pembimbing")}
                   </button>

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Sidebar from "@/components/sidebar-dosen"; 
-import { Search, Bell, MessageSquare } from "lucide-react";
+import { Search, Bell, MessageSquare, User, ArrowRight, LayoutDashboard, Calendar, ClipboardList } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import Link from "next/link"; 
 
@@ -10,7 +10,8 @@ import Link from "next/link";
 interface DashboardStat {
   count: number;
   label: string;
-  desc: string;
+  icon: React.ReactNode;
+  color: string;
 }
 
 interface StudentData {
@@ -22,68 +23,45 @@ interface StudentData {
 }
 
 export default function DashboardDosenPage() {
-  // State for Stats (Hapus item seminar)
   const [stats, setStats] = useState<DashboardStat[]>([
-    { count: 0, label: "Mahasiswa Bimbingan", desc: "Mahasiswa Bimbingan" },
-    { count: 0, label: "Proposal Menunggu Persetujuan", desc: "Proposal Menunggu Persetujuan" }
+    { count: 0, label: "Mahasiswa Bimbingan", icon: <User size={24} />, color: "blue" },
+    { count: 0, label: "Proposal Menunggu Persetujuan", icon: <ClipboardList size={24} />, color: "amber" }
   ]);
   
-  // State for Table
   const [students, setStudents] = useState<StudentData[]>([]);
   const [loading, setLoading] = useState(true);
-  
-  // State for User Name
   const [dosenName, setDosenName] = useState<string>("");
 
-  // --- FETCH DATA ---
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        
-        // 1. Get Current User (Dosen)
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
-        // 1b. Fetch User Profile Name
         const { data: profile } = await supabase
           .from("profiles")
           .select("nama")
           .eq("id", user.id)
           .single();
         
-        if (profile) {
-          setDosenName(profile.nama);
-        }
+        if (profile) setDosenName(profile.nama);
 
-        // 2. Fetch Supervised Students
         const { data: bimbinganData, error } = await supabase
           .from("thesis_supervisors")
           .select(`
             proposal_id,
             role,
             proposal:proposals (
-              id,
-              judul,
-              status,
-              user:profiles!proposals_mahasiswa_id_fkey (
-                nama,
-                npm
-              ),
-              seminar_requests (
-                tipe,
-                status
-              )
+              id, judul, status,
+              user:profiles ( nama, npm ),
+              seminar_requests ( tipe, status )
             )
           `)
           .eq("dosen_id", user.id);
+        
+        if (error) throw error;
 
-        if (error) {
-          console.error("Error fetching bimbingan:", error);
-          throw error;
-        }
-
-        // 3. Fetch Partner Supervisors (Pembimbing 2 logic)
         const proposalIds = bimbinganData.map((b: any) => b.proposal_id);
         let supervisorsMap: Record<string, string> = {};
         
@@ -102,18 +80,13 @@ export default function DashboardDosenPage() {
           });
         }
 
-        // 4. Process Data for Stats & Table
         let countProposalWait = 0;
-
         const mappedStudents: StudentData[] = bimbinganData.map((item: any) => {
           const proposal = item.proposal;
           const mhs = proposal?.user;
-          
           const seminar = proposal?.seminar_requests?.find((r: any) => r.tipe === 'seminar');
 
-          // -- Status Logic --
           let displayStatus = "Proses Bimbingan";
-          
           if (proposal.status === "Menunggu Persetujuan Dosbing") {
             displayStatus = "Pengajuan Proposal";
             countProposalWait++;
@@ -132,19 +105,10 @@ export default function DashboardDosenPage() {
           };
         });
 
-        // 5. Update States (Hapus item seminar)
         setStudents(mappedStudents);
         setStats([
-          { 
-            count: mappedStudents.length, 
-            label: "Mahasiswa Bimbingan", 
-            desc: "Mahasiswa Bimbingan" 
-          },
-          { 
-            count: countProposalWait, 
-            label: "Proposal Menunggu Persetujuan",
-            desc: "Proposal Menunggu Persetujuan"
-          }
+          { count: mappedStudents.length, label: "Mahasiswa Bimbingan", icon: <User size={24} />, color: "blue" },
+          { count: countProposalWait, label: "Proposal Menunggu Persetujuan", icon: <ClipboardList size={24} />, color: "amber" }
         ]);
 
       } catch (err) {
@@ -157,134 +121,163 @@ export default function DashboardDosenPage() {
     fetchData();
   }, []);
 
-  // Helper for Badge Colors
   const getStatusBadgeStyle = (status: string) => {
     switch (status) {
       case "Proses Kesiapan Seminar":
-        return "bg-[#8CAEE3] text-white"; 
+        return "bg-indigo-50 text-indigo-600 border-indigo-100"; 
       case "Pengajuan Proposal":
-        return "bg-[#E6CF95] text-white"; 
+        return "bg-amber-50 text-amber-600 border-amber-100"; 
       case "Proses Bimbingan":
-        return "bg-[#AEC0BA] text-white"; 
+        return "bg-emerald-50 text-emerald-600 border-emerald-100"; 
       default:
-        return "bg-gray-200 text-gray-700";
+        return "bg-slate-50 text-slate-600 border-slate-100";
     }
   };
 
   return (
-    <div className="flex min-h-screen bg-white font-sans">
-      
-      {/* SIDEBAR COMPONENT */}
+    <div className="flex min-h-screen bg-[#F8F9FB] font-sans text-slate-700">
       <Sidebar />
 
-      {/* MAIN CONTENT */}
-      <main className="flex-1 flex flex-col">
+      <main className="flex-1 flex flex-col h-screen overflow-hidden">
         
-        {/* HEADER */}
-        <header className="h-20 bg-white border-b border-gray-100 flex items-center justify-between px-8">
-          <div className="relative w-96">
-            <input 
-              type="text" 
-              placeholder="Search" 
-              className="w-full pl-4 pr-10 py-2.5 bg-gray-50 border-none rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-100 transition-all placeholder:text-gray-400"
-            />
-            <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-          </div>
-
+       {/* HEADER - Glassmorphism */}
+        <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
           <div className="flex items-center gap-6">
-            <button className="text-gray-400 hover:text-gray-600">
-              <MessageSquare size={22} />
-            </button>
-            <button className="relative text-gray-400 hover:text-gray-600">
-              <Bell size={22} />
-              <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
-            </button>
-          </div>
-        </header>
-
-        {/* CONTENT BODY */}
-        <div className="flex-1 p-8 bg-white">
-          
-          <h1 className="text-2xl font-bold text-gray-900 mb-8">
-            Selamat Datang, {dosenName || "Dosen Pembimbing"}.
-          </h1>
-
-          {/* STATS CARDS (Ubah ke grid-cols-2) */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
-            {stats.map((stat, idx) => (
-              <div key={idx} className="border border-gray-300 rounded-2xl p-8 flex flex-col justify-center items-center text-center h-48 hover:shadow-sm transition-shadow">
-                <span className="text-4xl font-extrabold text-gray-900 mb-4">
-                  {loading ? "..." : stat.count}
-                </span>
-                <span className="text-base font-semibold text-gray-900 max-w-[200px] leading-tight">
-                  {stat.label}
-                </span>
-              </div>
-            ))}
-          </div>
-
-          {/* TABLE SECTION */}
-          <div>
-            <h2 className="text-xl font-bold text-gray-900 mb-6">Mahasiswa Bimbingan</h2>
-            
-            <div className="border border-gray-200 rounded-xl overflow-hidden">
-              <table className="w-full min-w-[800px]">
-                <thead>
-                  <tr className="bg-[#F8F9FB] border-b border-gray-200 text-left">
-                    <th className="px-6 py-4 text-sm font-bold text-gray-700">Nama Mahasiswa</th>
-                    <th className="px-6 py-4 text-sm font-bold text-gray-700">NPM</th>
-                    <th className="px-6 py-4 text-sm font-bold text-gray-700 text-center">Status</th>
-                    <th className="px-6 py-4 text-sm font-bold text-gray-700">Pembimbing 2</th>
-                    <th className="px-6 py-4 text-sm font-bold text-gray-700 text-center">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {loading && (
-                    <tr>
-                      <td colSpan={5} className="px-6 py-8 text-center text-gray-400">
-                        Memuat data...
-                      </td>
-                    </tr>
-                  )}
-
-                  {!loading && students.length === 0 && (
-                    <tr>
-                      <td colSpan={5} className="px-6 py-8 text-center text-gray-400">
-                        Belum ada mahasiswa bimbingan.
-                      </td>
-                    </tr>
-                  )}
-
-                  {students.map((student, idx) => (
-                    <tr key={idx} className="hover:bg-gray-50/50">
-                      <td className="px-6 py-6 text-sm font-medium text-gray-900">
-                        {student.name}
-                      </td>
-                      <td className="px-6 py-6 text-sm text-gray-900">
-                        {student.npm}
-                      </td>
-                      <td className="px-6 py-6 text-center">
-                        <span className={`px-4 py-2 rounded-full text-xs font-bold shadow-sm ${getStatusBadgeStyle(student.status)}`}>
-                          {student.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-6 text-sm text-gray-900">
-                        {student.pembimbing2}
-                      </td>
-                      <td className="px-6 py-6 text-center">
-                        <Link href={`/dosen/accproposal?id=${student.id}`}>
-                          <button className="bg-[#6AA495] hover:bg-[#588d7f] text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors shadow-sm">
-                            Lihat Detail
-                          </button>
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="relative w-72 group">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" size={16} />
+              <input 
+                type="text" 
+                placeholder="Cari data..." 
+                className="w-full pl-10 pr-4 py-2 bg-slate-100 border-transparent border focus:bg-white focus:border-blue-400 rounded-xl text-xs outline-none transition-all shadow-inner uppercase tracking-widest"
+              />
             </div>
           </div>
 
+          <div className="flex items-center gap-6">
+            {/* Minimalist SIMPRO Text */}
+            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
+              Simpro
+            </span>
+          </div>
+        </header>
+
+        {/* SCROLLABLE CONTENT */}
+        <div className="flex-1 overflow-y-auto p-10 custom-scrollbar">
+          <div className="max-w-[1400px] mx-auto">
+            
+            {/* GREETING */}
+            <div className="mb-10">
+              <h1 className="text-3xl font-black text-slate-800 tracking-tight uppercase leading-none">
+                Selamat Datang, 
+              </h1>
+              <p className="text-blue-600 text-3xl font-black tracking-tight uppercase mt-2">
+                {dosenName || "Dosen Pembimbing"}.
+              </p>
+              <p className="text-slate-500 font-medium mt-3">Pantau progres konsultasi dan persetujuan mahasiswa bimbingan Anda secara real-time.</p>
+            </div>
+
+            {/* STATS CARDS */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
+              {stats.map((stat, idx) => (
+                <div key={idx} className="bg-white rounded-[2rem] p-8 border border-white shadow-xl shadow-slate-200/50 flex items-center gap-8 group hover:scale-[1.02] transition-all duration-300">
+                  <div className={`h-20 w-20 rounded-[1.5rem] flex items-center justify-center transition-all duration-300 shadow-lg ${
+                    stat.color === 'blue' ? 'bg-blue-600 text-white shadow-blue-200' : 'bg-amber-500 text-white shadow-amber-200'
+                  }`}>
+                    {stat.icon}
+                  </div>
+                  <div>
+                    <span className="text-5xl font-black text-slate-800 block leading-none mb-2">
+                      {loading ? "..." : stat.count}
+                    </span>
+                    <span className="text-xs font-black text-slate-400 uppercase tracking-[0.15em]">
+                      {stat.label}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* TABLE SECTION */}
+            <div className="bg-white rounded-[2.5rem] border border-white shadow-xl shadow-slate-200/50 overflow-hidden min-h-[500px]">
+              <div className="p-8 border-b border-slate-50 bg-slate-50/30 flex items-center gap-3">
+                <div className="p-2.5 bg-blue-600 rounded-xl text-white shadow-lg shadow-blue-200">
+                  <LayoutDashboard size={20} />
+                </div>
+                <h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Log Konsultasi Mahasiswa</h2>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50/50 text-[11px] uppercase tracking-[0.15em] text-slate-400 font-black border-b border-slate-100">
+                      <th className="px-8 py-6">Mahasiswa</th>
+                      <th className="px-8 py-6 text-center">NPM</th>
+                      <th className="px-8 py-6 text-center">Status</th>
+                      <th className="px-8 py-6">Co-Pembimbing</th>
+                      <th className="px-8 py-6 text-center">Tindakan</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {loading ? (
+                      <tr>
+                        <td colSpan={5} className="px-8 py-20 text-center text-slate-400 font-bold animate-pulse uppercase tracking-widest">Sinkronisasi Data...</td>
+                      </tr>
+                    ) : students.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="px-8 py-20 text-center">
+                           <div className="flex flex-col items-center gap-3 opacity-30">
+                              <Calendar size={60} />
+                              <p className="font-black uppercase tracking-widest text-sm">Belum ada data bimbingan</p>
+                           </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      students.map((student, idx) => (
+                        <tr key={idx} className="group hover:bg-blue-50/30 transition-all duration-300">
+                          <td className="px-8 py-8">
+                            <div className="flex items-center gap-4">
+                              <div className="h-12 w-12 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-black group-hover:bg-blue-600 group-hover:text-white transition-all shadow-inner uppercase">
+                                {student.name.charAt(0)}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-sm font-black text-slate-800 truncate uppercase tracking-tight">{student.name}</p>
+                                <p className="text-[10px] text-blue-500 font-bold uppercase tracking-widest mt-1 italic">Mahasiswa Akhir</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-8 py-8 text-center">
+                            <span className="text-xs font-bold text-slate-400 tracking-tighter tabular-nums">{student.npm}</span>
+                          </td>
+                          <td className="px-8 py-8 text-center">
+                            <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border shadow-sm ${getStatusBadgeStyle(student.status)}`}>
+                              {student.status}
+                            </span>
+                          </td>
+                          <td className="px-8 py-8">
+                             <div className="flex items-center gap-2">
+                                <User size={14} className="text-slate-300" />
+                                <span className="text-xs font-bold text-slate-600 uppercase tracking-tight truncate max-w-[150px]">{student.pembimbing2}</span>
+                             </div>
+                          </td>
+                          <td className="px-8 py-8 text-center">
+                            <Link href={`/dosen/accproposal?id=${student.id}`}>
+                              <button className="inline-flex items-center gap-2 px-6 py-3 bg-slate-900 hover:bg-blue-600 text-white text-[10px] font-black uppercase tracking-[0.15em] rounded-2xl transition-all shadow-lg active:scale-95 group/btn">
+                                DETAIL <ArrowRight size={14} className="group-hover/btn:translate-x-1 transition-transform" />
+                              </button>
+                            </Link>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              
+              <div className="p-8 bg-slate-50/50 border-t border-slate-100 flex justify-center">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Sistem Informasi Manajemen Tugas Akhir v.1.0</p>
+              </div>
+            </div>
+          </div>
         </div>
       </main>
     </div>

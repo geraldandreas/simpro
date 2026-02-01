@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Sidebar from '@/components/sidebar';
 import { supabase } from '@/lib/supabaseClient';
+import { useRouter } from 'next/navigation';
 import { 
   Bell, Search, Check, X, Clock, Layout, 
   AlertCircle, Lock, CloudUpload, FileText, ChevronRight 
@@ -15,6 +16,7 @@ interface DocumentData {
 }
 
 export default function UnggahDokumenSeminar() {
+  const router = useRouter();
   const [documents, setDocuments] = useState<{ [key: string]: DocumentData }>({});
   const [loading, setLoading] = useState(true);
   const [proposalId, setProposalId] = useState<string | null>(null);
@@ -117,9 +119,37 @@ export default function UnggahDokumenSeminar() {
   const percentage = Math.round((totalVerified / totalDocs) * 100);
 
   const handleSubmitSeminar = async () => {
-    if (percentage < 100) { alert("⚠️ Dokumen belum lengkap terverifikasi."); return; }
-    // ... sisa logika submit tetap sama
-  };
+  if (percentage < 100) { 
+    alert("⚠️ Dokumen belum lengkap terverifikasi oleh Tendik."); 
+    return; 
+  }
+
+  const confirmSubmit = window.confirm("Apakah Anda yakin ingin mengajukan seminar? Data yang sudah dikirim tidak dapat diubah.");
+  if (!confirmSubmit) return;
+
+  try {
+    setLoading(true);
+    
+    // Update atau Insert ke seminar_requests
+    const { error } = await supabase
+      .from('seminar_requests')
+      .upsert({ 
+        proposal_id: proposalId,
+        tipe: 'seminar', // Sesuaikan jika ini untuk sidang
+        status: 'Disetujui', // Status awal pengajuan ke Kaprodi
+        created_at: new Date().toISOString()
+      }, { onConflict: 'proposal_id,tipe' });
+
+    if (error) throw error;
+
+    alert("✅ Berhasil! Pengajuan seminar Anda telah dikirim ke Kaprodi.");
+    router.push('/mahasiswa/dashboard'); // Redirect setelah berhasil
+  } catch (error: any) {
+    alert("❌ Gagal mengajukan seminar: " + error.message);
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <div className="flex h-screen bg-[#F3F4F6] font-sans text-slate-700 overflow-hidden">
@@ -128,12 +158,16 @@ export default function UnggahDokumenSeminar() {
         
         {/* Header Updated: Glassmorphism Effect */}
         <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
-          <h1 className="text-xl font-black text-slate-800 tracking-tight uppercase">Dokumen Seminar</h1>
-          <div className="flex items-center gap-4">
-            <button className="p-2.5 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors relative">
-              <Bell size={20} className="text-slate-600" />
-              <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
-            </button>
+          <div className="flex items-center gap-6">
+            <div className="relative w-72 group">
+            </div>
+          </div>
+
+          <div className="flex items-center gap-6">
+            {/* Minimalist SIMPRO Text */}
+            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
+              Simpro
+            </span>
           </div>
         </header>
 

@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabaseClient";
 import Sidebar from "@/components/sidebar";
 import { 
   Search, 
-  Bell, 
+  AlertCircle, 
   User, 
   FileText, 
   ArrowLeft, 
@@ -37,6 +37,8 @@ export default function DetailBimbinganPage() {
   useEffect(() => {
     if (!sessionId) return;
 
+    
+
     const fetchDetail = async () => {
       try {
         setLoading(true);
@@ -54,7 +56,8 @@ export default function DetailBimbinganPage() {
         const { data: supervisors } = await supabase
           .from("thesis_supervisors")
           .select(`role, dosen:profiles ( nama )`)
-          .eq("proposal_id", sessionData.proposal[0].id);
+          .eq("proposal_id", sessionData.proposal.id);
+
 
         const { data: sessionDrafts } = await supabase
           .from("session_drafts")
@@ -67,6 +70,7 @@ export default function DetailBimbinganPage() {
           .select(`id, komentar, file_url, status_revisi, created_at, dosen:profiles ( nama )`)
           .eq("session_id", sessionId)
           .order("created_at", { ascending: false });
+          console.log("fileURL", feedbackData?.[0]?.file_url)
 
         if (feedbackError) throw feedbackError;
         setFeedbacks(feedbackData || []);
@@ -128,6 +132,29 @@ export default function DetailBimbinganPage() {
       setSending(false);
     }
   };
+  const handleDownloadFeedback = async (fileUrl: string) => {
+  try {
+   
+    // ambil path SETELAH nama bucket
+    const path = fileUrl.split("feedback_draft/")[1];
+  
+
+    if (!path) throw new Error("Path file tidak valid");
+
+    const { data, error } = await supabase.storage
+      .from("feedback_draft")
+      .createSignedUrl(path, 3600);
+    console.log("data",data)
+    if (error) throw error;
+
+    window.open(data.signedUrl, "_blank");
+    console.log("datasigned",data.signedUrl)
+  } catch (err) {
+    console.error(err);
+    alert("Gagal mengunduh file");
+  }
+};
+
 
   if (loading) {
     return (
@@ -143,6 +170,8 @@ export default function DetailBimbinganPage() {
   const supervisors = data?.proposal?.supervisors || [];
   const pembimbing1 = supervisors.find((s: any) => s.role === "utama")?.dosen?.nama || "-";
   const pembimbing2 = supervisors.find((s: any) => s.role === "pendamping")?.dosen?.nama || "-";
+  if (!sessionId) return <div className="flex h-screen items-center justify-center text-gray-400">Sesi tidak ditemukan.</div>;
+  const feedback= feedbacks?.[0] ?? null;
 
   return (
     <div className="flex min-h-screen bg-[#F4F7FE] font-sans text-slate-700">
@@ -150,16 +179,17 @@ export default function DetailBimbinganPage() {
 
       <main className="flex-1 ml-64 flex flex-col h-screen overflow-y-auto">
         <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
-          <div className="relative w-96 group">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" size={18} />
-            <input type="text" placeholder="Cari dokumen..." className="w-full pl-12 pr-4 py-2.5 bg-slate-100 border-none rounded-xl text-sm focus:ring-2 focus:ring-blue-500 transition-all outline-none" />
-          </div>
-          <div className="flex items-center gap-4">
-            <button className="p-2.5 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors relative">
-              <Bell size={20} className="text-slate-600" />
-              <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
-            </button>
+          <div className="flex items-center gap-6">
+            <div className="relative w-72 group">
             </div>
+          </div>
+
+          <div className="flex items-center gap-6">
+            {/* Minimalist SIMPRO Text */}
+            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
+              Simpro
+            </span>
+          </div>
         </header>
 
         <div className="flex-1 p-10 pb-24 max-w-7xl mx-auto w-full">
@@ -333,7 +363,7 @@ export default function DetailBimbinganPage() {
               <div className="bg-white rounded-[2rem] border border-white shadow-xl shadow-slate-200/50 p-8 relative overflow-hidden">
                 <div className="flex items-center gap-3 mb-8">
                     <div className="p-2.5 bg-indigo-600 rounded-xl text-white shadow-lg shadow-indigo-200"><MessageSquare size={18} /></div>
-                    <h3 className="text-sm font-black text-slate-800 uppercase tracking-tighter">Feedback Dosen</h3>
+                    <h3 className="text-sm font-black text-slate-800 uppercase tracking-wide">Feedback Dosen</h3>
                 </div>
 
                 {feedbacks.length > 0 ? (
@@ -350,8 +380,8 @@ export default function DetailBimbinganPage() {
                                 </span>
                             </div>
                             <div className="bg-slate-50 rounded-2xl p-5 border border-slate-100 shadow-sm mb-3">
-                                <p className="text-sm text-slate-600 font-medium leading-relaxed italic">
-                                    "{fb.komentar}"
+                                <p className="text-sm text-slate-600 font-medium leading-relaxed">
+                                    {fb.komentar}
                                 </p>
                             </div>
                             <p className="text-[10px] font-bold text-slate-400 flex items-center gap-1.5 uppercase tracking-tighter">
@@ -368,29 +398,47 @@ export default function DetailBimbinganPage() {
                 )}
               </div>
 
-              {/* FILE PERBAIKAN */}
-              <div className="bg-slate-900 rounded-[2rem] shadow-xl p-8 text-white relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-8 opacity-10"><FileText size={100} /></div>
-                <h3 className="text-xs font-black uppercase tracking-[0.2em] mb-8 relative z-10 flex items-center gap-3">
-                   <Download size={18} className="text-blue-400" /> Dokumen Balasan
-                </h3>
-                <div className="space-y-4 relative z-10">
-                    {feedbacks.some(fb => fb.file_url) ? (
-                        feedbacks.map((fb) => fb.file_url && (
-                        <div key={`file-${fb.id}`} className="bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/10 flex items-center justify-between group">
-                            <div className="flex items-center gap-3 overflow-hidden">
-                                <div className="p-2 bg-blue-500 rounded-lg shrink-0"><FileText size={16} /></div>
-                                <p className="text-xs font-bold truncate pr-4 uppercase tracking-tighter">{fb.file_url.split('/').pop()}</p>
-                            </div>
-                            <a href={fb.file_url} target="_blank" className="p-2 bg-white text-slate-900 rounded-xl hover:bg-blue-400 hover:text-white transition-all shadow-lg shrink-0"><Download size={16} /></a>
-                        </div>
-                        ))
-                    ) : (
-                        <p className="text-[10px] font-black text-slate-500 py-4 uppercase tracking-widest italic">Tidak ada lampiran file.</p>
-                    )}
+             {/* Card Dokumen & Catatan Mahasiswa */}
+           <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">Feedback Dosen</h3>
+  
+            {feedback?.file_url ? (
+              <button
+                onClick={() => handleDownloadFeedback(feedback.file_url)}
+                className="w-full flex items-center justify-between bg-white border border-gray-200 p-4 rounded-xl mb-6 shadow-sm hover:border-blue-300 hover:bg-blue-50/30 transition-all duration-200 group text-left overflow-hidden"
+              >
+                <div className="flex items-center gap-4 flex-1 min-w-0">
+                  {/* Icon wrapper dengan efek hover */}
+                  <div className="p-3 bg-blue-50 rounded-lg text-blue-600 shrink-0 group-hover:bg-blue-100 group-hover:scale-105 transition-all">
+                    <FileText size={24} />
+                  </div>
+                  
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold text-gray-800 truncate group-hover:text-blue-900">
+                      {decodeURIComponent(feedback.file_url.split("/").pop()?.split("_").slice(1).join("_") || "File Pelengkap")}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-1 flex items-center gap-1 font-medium group-hover:text-blue-500">
+                      Klik untuk mengunduh dokumen
+                    </p>
+                  </div>
                 </div>
-              </div>
 
+                {/* Indikator Unduh di sisi kanan */}
+                <div className="ml-4 p-2 text-gray-400 group-hover:text-blue-600 transition-colors shrink-0">
+                  <Download size={20} />
+                </div>
+              </button>
+            ) : (
+              <div className="flex flex-col items-center justify-center p-8 bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl mb-6 text-gray-400">
+                <AlertCircle size={24} className="mb-2 opacity-50" />
+                <p className="text-sm font-medium">
+                  Mahasiswa belum mengunggah dokumen draft.
+                </p>
+              </div>
+              )}
+               
+              
+              </div>
             </div>
           </div>
         </div>
@@ -398,3 +446,5 @@ export default function DetailBimbinganPage() {
     </div>
   );
 }
+
+

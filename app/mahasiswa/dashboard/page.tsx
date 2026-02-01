@@ -14,6 +14,25 @@ const DashboardMahasiswa: React.FC = () => {
   const router = useRouter(); // Inisialisasi router
   const [activeStep, setActiveStep] = useState<number>(0);
   const [loadingStep, setLoadingStep] = useState<boolean>(true);
+
+interface DocumentData {
+  id?: string;
+  status: string;
+  file_url?: string;
+}
+
+const [documents, setDocuments] = useState<{ [key: string]: DocumentData }>({});
+const getDocStatus = (docId: string) => {
+  const doc = documents[docId];
+
+  if (!doc) return 'fail';
+  if (doc.status === 'Lengkap') return 'success';
+  if (doc.status === 'Menunggu Verifikasi') return 'wait';
+  return 'fail';
+};
+
+
+
   
   // State untuk Logika Gatekeeping
   const [isEligible, setIsEligible] = useState(false);
@@ -21,6 +40,17 @@ const DashboardMahasiswa: React.FC = () => {
   const [isAccDosen, setIsAccDosen] = useState(false);
 
   const [stats, setStats] = useState({ bimbingan: 0, revisi: "Tidak Ada", docs: 0 });
+
+  type Supervisor = {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  role: 'Pembimbing Utama' | 'Co-Pembimbing';
+};
+
+const [supervisors, setSupervisors] = useState<Supervisor[]>([]);
+
 
   useEffect(() => {
     const loadDashboardData = async () => {
@@ -34,17 +64,57 @@ const DashboardMahasiswa: React.FC = () => {
         if (!proposal) { setActiveStep(0); return; }
         
         // 2. Cek Bimbingan & Supervisor
-        const { data: supervisors } = await supabase.from('thesis_supervisors').select('dosen_id, role').eq('proposal_id', proposal.id);
+        const { data: supervisorData } = await supabase
+  .from('thesis_supervisors')
+  .select(`
+    role,
+    profiles!dosen_id (
+      id,
+      nama,
+      email,
+      phone
+    )
+  `)
+  .eq('proposal_id', proposal.id);
+
         const { data: sessions } = await supabase.from('guidance_sessions').select('dosen_id, session_feedbacks(status_revisi)').eq('proposal_id', proposal.id).eq('kehadiran_mahasiswa', 'hadir');
         const { data: seminarReq } = await supabase.from('seminar_requests').select('approved_by_p1, approved_by_p2, status').eq('proposal_id', proposal.id).maybeSingle();
 
-        // Hitung bimbingan per dosen
-        let p1Count = 0; let p2Count = 0;
-        supervisors?.forEach(sp => {
-          const count = sessions?.filter((s: any) => s.dosen_id === sp.dosen_id && s.session_feedbacks?.[0]?.status_revisi !== 'revisi').length || 0;
-          if (sp.role === 'utama' || sp.role === 'pembimbing1') p1Count = count;
-          else p2Count = count;
-        });
+       if (supervisorData) {
+  const mapped: Supervisor[] = supervisorData.map((s: any) => ({
+    id: s.profiles.id,
+    name: s.profiles.nama,
+    email: s.profiles.email,
+    phone: s.profiles.phone,
+    role:
+      s.role === 'utama' || s.role === 'pembimbing1'
+        ? 'Pembimbing Utama'
+        : 'Co-Pembimbing',
+  }));
+
+  setSupervisors(mapped);
+}
+
+const { data: supervisorRoles } = await supabase
+  .from('thesis_supervisors')
+  .select('dosen_id, role')
+  .eq('proposal_id', proposal.id);
+
+let p1Count = 0;
+let p2Count = 0;
+
+       supervisorRoles?.forEach(sp => {
+  const count =
+    sessions?.filter(
+      (s: any) =>
+        s.dosen_id === sp.dosen_id &&
+        s.session_feedbacks?.[0]?.status_revisi !== 'revisi'
+    ).length || 0;
+
+  if (sp.role === 'utama' || sp.role === 'pembimbing1') p1Count = count;
+  else p2Count = count;
+});
+
 
         const approvedByAll = seminarReq?.approved_by_p1 === true && seminarReq?.approved_by_p2 === true;
         const eligible = p1Count >= 10 && p2Count >= 10 && approvedByAll;
@@ -63,8 +133,28 @@ const DashboardMahasiswa: React.FC = () => {
         }
 
         // 4. Statistik Dokumen
-        const { data: docs } = await supabase.from("seminar_documents").select("status").eq("proposal_id", proposal.id);
-        setStats(prev => ({ ...prev, docs: docs?.filter(d => d.status === "Lengkap").length || 0 }));
+        const { data: docs } = await supabase
+  .from('seminar_documents')
+  .select('*')
+  .eq('proposal_id', proposal.id);
+
+if (docs) {
+  const map: { [key: string]: DocumentData } = {};
+  docs.forEach(d => {
+    map[d.nama_dokumen] = {
+      id: d.id,
+      status: d.status,
+      file_url: d.file_url,
+    };
+  });
+
+  setDocuments(map);
+
+  setStats(prev => ({
+    ...prev,
+    docs: docs.filter(d => d.status === 'Lengkap').length
+  }));
+}
 
       } catch (err) { console.error(err); } finally { setLoadingStep(false); }
     };
@@ -73,15 +163,34 @@ const DashboardMahasiswa: React.FC = () => {
 
   const docPercentage = Math.round((stats.docs / 17) * 100);
 
+   const totalSteps = 9
+  const stepWidth = 100 / (totalSteps - 1)
+
+  // hijau sampai step sebelum biru
+  const greenWidth =
+    activeStep >= 2 ? (activeStep - 1) * stepWidth : activeStep * stepWidth
+
+  // biru hanya 1 segmen
+  const blueWidth =
+    activeStep >= 2 ? stepWidth : 0
+
+
   return (
     <div className="flex min-h-screen bg-[#F3F4F6] font-sans text-slate-700">
       <Sidebar />
       <main className="flex-1 ml-64 flex flex-col h-screen overflow-hidden">
-        <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-end px-10 sticky top-0 z-20">
-          <button className="p-2.5 text-slate-400 hover:bg-slate-100 rounded-xl transition-all relative">
-            <Bell size={20} />
-            <span className="absolute top-2 right-2.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
-          </button>
+       <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
+          <div className="flex items-center gap-6">
+            <div className="relative w-72 group">
+            </div>
+          </div>
+
+          <div className="flex items-center gap-6">
+            {/* Minimalist SIMPRO Text */}
+            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
+              Simpro
+            </span>
+          </div>
         </header>
 
         <div className="flex-1 overflow-y-auto p-10 custom-scrollbar">
@@ -118,10 +227,25 @@ const DashboardMahasiswa: React.FC = () => {
                 </span>
               </div>
               <div className="relative pt-4 pb-8">
-                <div className="absolute top-[26px] left-0 w-full h-1.5 bg-slate-100 rounded-full z-0" />
-                <div className="absolute top-[26px] left-0 h-1.5 bg-blue-600 rounded-full z-0 transition-all duration-1000" style={{ width: `${(activeStep / 8) * 100}%` }} />
+                <div className="absolute top-[38px] left-6 w-full h-1.5 bg-slate-100 rounded-full z-0" />
+                {/* HIJAU */}
+                <div
+                  className="absolute top-[38px] left-6 h-1.5 bg-green-600 rounded-full z-0 transition-all duration-700"
+                  style={{ width: `${greenWidth}%` }}
+                />
+
+                {/* BIRU */}
+                {blueWidth > 0 && (
+                  <div
+                    className="absolute top-[38px] h-1.5 bg-blue-600 rounded-full z-0 transition-all duration-700"
+                    style={{
+                      left: `calc(${greenWidth}% + 1.5rem)`,
+                      width: `${blueWidth}%`,
+                    }}
+                  />
+                )}
                 <div className="relative flex justify-between">
-                  {["Pengajuan", "Persetujuan", "Bimbingan", "Seminar Ready", "Upload Doc", "Verifikasi", "Seminar", "Perbaikan", "Sidang"].map((l, i) => (
+                  {["Pengajuan Judul", "Persetujuan Dosbing", "Bimbingan", "Kesiapan Seminar", "Unggah Dokumen Seminar", "Verifikasi Berkas", "Seminar", "Perbaikan Seminar", "Sidang"].map((l, i) => (
                     <TimelineStep key={l} label={l} index={i} current={activeStep === i} completed={activeStep > i} />
                   ))}
                 </div>
@@ -154,9 +278,21 @@ const DashboardMahasiswa: React.FC = () => {
                 </div>
 
                 <div className="w-full space-y-3">
-                   <DocumentItem label="Berita Acara Bimbingan" status={docPercentage === 100 ? 'success' : 'wait'} />
-                   <DocumentItem label="Transkrip Nilai (Disahkan)" status={docPercentage === 100 ? 'success' : 'wait'} />
-                   <DocumentItem label="Formulir Sidang TA" status={docPercentage === 100 ? 'success' : 'fail'} />
+                   <DocumentItem
+                      label="Berita Acara Bimbingan"
+                      status={getDocStatus('berita_acara_bimbingan')}
+                    />
+
+                    <DocumentItem
+                      label="Transkrip Nilai (Disahkan)"
+                      status={getDocStatus('transkrip_nilai')}
+                    />
+
+                    <DocumentItem
+                      label="Formulir Sidang TA"
+                      status={getDocStatus('pengajuan_sidang')}
+                    />
+
                    
                    <button 
                     disabled={!isEligible} 
@@ -183,9 +319,18 @@ const DashboardMahasiswa: React.FC = () => {
               </div>
 
               {/* Card 3: Contacts */}
+
               <div className="lg:col-span-4 space-y-6">
-                <ContactCard name="Dr. Juli Rejito, M.Kom" role="Pembimbing Utama" />
-                <ContactCard name="Rudi Rosadi, S.Si, M.Kom" role="Co-Pembimbing" />
+                {supervisors.map(sp => (
+  <ContactCard
+    key={sp.id}
+    name={sp.name}
+    role={sp.role}
+    email={sp.email}
+    phone={sp.phone}
+  />
+))}
+
                 <div className="bg-slate-900 p-6 rounded-[2rem] text-white relative overflow-hidden shadow-lg">
                   <p className="text-[10px] font-black opacity-50 uppercase tracking-widest mb-4">Administrasi</p>
                   <p className="text-sm font-bold">Bapak Anton</p>
@@ -242,14 +387,30 @@ const StatusBadge = ({ label, current, target }: any) => (
   </div>
 );
 
-const ContactCard = ({ name, role }: any) => (
+const ContactCard = ({ name, role, email, phone }: any) => (
   <div className="bg-white p-6 rounded-[2rem] border border-white shadow-xl shadow-slate-200/50 flex items-center gap-4">
-    <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-400"><User size={24} /></div>
+    <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-400">
+      <User size={24} />
+    </div>
     <div className="min-w-0">
-      <p className="text-sm font-black text-slate-800 truncate tracking-tight uppercase">{name}</p>
-      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{role}</p>
+      <p className="text-sm font-black text-slate-800 truncate uppercase">{name}</p>
+      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+        {role}
+      </p>
+
+      {email && (
+        <p className="text-[10px] text-slate-500 mt-1 truncate">
+          ✉️ {email}
+        </p>
+      )}
+      {phone && (
+        <p className="text-[10px] text-slate-500 truncate">
+          📞 {phone}
+        </p>
+      )}
     </div>
   </div>
 );
+
 
 export default DashboardMahasiswa;

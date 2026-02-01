@@ -1,13 +1,19 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import Link from "next/link";
-import { Search, Bell, X } from "lucide-react"; // Import X untuk tombol reset
-import { supabase } from "@/lib/supabaseClient";
 import Sidebar from "@/components/sidebar-dosen";
+import Link from "next/link";
+import { 
+  Search, 
+  Bell, 
+  Filter, 
+  FileText, 
+  Activity,
+  ArrowRight
+} from "lucide-react";
+import { supabase } from "@/lib/supabaseClient";
 
 // ================= TYPES =================
-
 interface ProposalItem {
   id: string;
   judul: string;
@@ -16,53 +22,28 @@ interface ProposalItem {
   user: {
     nama: string | null;
     npm: string | null;
-  } | null;
+  };
 }
-
-// ================= PAGE =================
 
 export default function AksesProposalPage() {
   const [proposals, setProposals] = useState<ProposalItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // --- FILTER STATES ---
   const [searchQuery, setSearchQuery] = useState("");
   const [filterBidang, setFilterBidang] = useState("Semua");
   const [filterStatus, setFilterStatus] = useState("Semua");
 
-  // ================= FETCH PROPOSALS =================
-
   const fetchProposals = async () => {
     try {
       setLoading(true);
-
       const { data, error } = await supabase
         .from("proposals")
-        .select(
-          `
-          id,
-          judul,
-          bidang,
-          status,
-          user:profiles (
-            nama,
-            npm
-          )
-        `
-        )
-        .order("created_at", { ascending: false });
+        .select(`id, judul, bidang, status, user:profiles ( nama, npm )`)
+        .order("created_at", { ascending: false })
+        .returns<ProposalItem[]>();
 
       if (error) throw error;
-
-      const mappedData: ProposalItem[] = (data ?? []).map((item: any) => ({
-      id: item.id,
-      judul: item.judul,
-      bidang: item.bidang,
-      status: item.status,
-      user: item.user[0] ?? null // 🔑 KUNCI UTAMA
-    }));
-
-    setProposals(mappedData);
+      setProposals(data || []);
     } catch (err) {
       console.error("❌ Gagal mengambil proposal:", err);
     } finally {
@@ -70,13 +51,8 @@ export default function AksesProposalPage() {
     }
   };
 
-  useEffect(() => {
-    fetchProposals();
-  }, []);
+  useEffect(() => { fetchProposals(); }, []);
 
-  // ================= FILTER LOGIC =================
-
-  // Ambil list unik bidang dari data untuk dropdown
   const uniqueBidang = ["Semua", ...Array.from(new Set(proposals.map((p) => p.bidang)))];
 
   const filteredProposals = proposals.filter((item) => {
@@ -84,13 +60,11 @@ export default function AksesProposalPage() {
       item.judul.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.user?.nama?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.user?.npm?.toLowerCase().includes(searchQuery.toLowerCase());
-
     const matchBidang = filterBidang === "Semua" || item.bidang === filterBidang;
-
     const matchStatus =
       filterStatus === "Semua" ||
       (filterStatus === "Diterima" && item.status === "Diterima") ||
-      (filterStatus === "Menunggu" && item.status !== "Diterima"); // Asumsi selain Diterima adalah Menunggu
+      (filterStatus === "Menunggu" && item.status !== "Diterima");
 
     return matchSearch && matchBidang && matchStatus;
   });
@@ -101,205 +75,173 @@ export default function AksesProposalPage() {
     setFilterStatus("Semua");
   };
 
-  // ================= RENDER =================
-
   return (
     <div className="flex min-h-screen bg-[#F8F9FB] font-sans text-slate-700">
-      
-      {/* SIDEBAR */}
+      {/* SIDEBAR - Menggunakan properti flex bawaan untuk mencegah gap */}
       <Sidebar />
 
-      {/* CONTENT */}
-      <div className="flex-1 flex flex-col h-screen overflow-y-auto">
+      {/* MAIN CONTAINER - Menggunakan flex-1 agar memenuhi sisa layar tanpa margin manual */}
+      <main className="flex-1 flex flex-col h-screen overflow-hidden">
         
-        {/* HEADER */}
-        <header className="h-16 bg-white border-b border-gray-100 flex items-center justify-between px-8 sticky top-0 z-20 shrink-0">
-          <div className="relative w-96">
-            <Search
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300"
-              size={18}
-            />
-            <input
-              type="text"
-              placeholder="Search..."
-              className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-100"
-            />
-          </div>
+        <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
+                  <div className="flex items-center gap-6">
+                    <div className="relative w-72 group">
+                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" size={16} />
+                      <input 
+                        type="text" 
+                        placeholder="Cari data..." 
+                        className="w-full pl-10 pr-4 py-2 bg-slate-100 border-transparent border focus:bg-white focus:border-blue-400 rounded-xl text-xs outline-none transition-all shadow-inner uppercase tracking-widest"
+                      />
+                    </div>
+                  </div>
+        
+                  <div className="flex items-center gap-6">
+                    {/* Minimalist SIMPRO Text */}
+                    <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
+                      Simpro
+                    </span>
+                  </div>
+                </header>
 
-          <button className="relative p-2 hover:bg-gray-50 rounded-full transition-colors">
-            <Bell size={20} className="text-gray-400" />
-            <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
-          </button>
-        </header>
+        {/* SCROLLABLE AREA - Memisahkan scroll agar header tetap sticky */}
+        <div className="flex-1 overflow-y-auto p-10 custom-scrollbar">
+          <div className="max-w-[1400px] mx-auto w-full">
+            <div className="mb-10">
+              <h1 className="text-3xl font-black text-slate-800 tracking-tight leading-none uppercase">
+                Proposal Mahasiswa
+              </h1>
+              <p className="text-slate-500 font-medium mt-1">
+                Review usulan judul dan tentukan dosen pembimbing akademik yang sesuai.
+              </p>
+            </div>
 
-        <main className="p-8">
-          <div className="mb-6">
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">
-              Proposal Mahasiswa
-            </h1>
-            <p className="text-gray-600">
-              Tinjau dan pilih topik yang sesuai dengan bidang keahlian Anda
-            </p>
-          </div>
-
-          {/* === FILTER SECTION === */}
-          <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm mb-6">
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-              
-              {/* Filter Bidang */}
-              <div className="md:col-span-3">
-                <label className="block text-xs font-bold text-gray-500 mb-1 uppercase tracking-wider">Bidang</label>
-                <select
-                  value={filterBidang}
-                  onChange={(e) => setFilterBidang(e.target.value)}
-                  className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-300"
-                >
-                  {uniqueBidang.map((b) => (
-                    <option key={b} value={b}>{b}</option>
-                  ))}
-                </select>
+            {/* === FILTER SECTION === */}
+            <div className="bg-white p-8 rounded-[2rem] border border-white shadow-xl shadow-slate-200/50 mb-10 transition-all">
+              <div className="flex items-center gap-3 mb-6">
+                 <div className="p-2 bg-blue-50 text-blue-600 rounded-lg"><Filter size={18} /></div>
+                 <h2 className="text-sm font-black text-slate-800 uppercase tracking-widest leading-none">Filter Pencarian</h2>
               </div>
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-end">
+                <div className="md:col-span-3">
+                  <label className="block text-[10px] font-black text-slate-400 mb-2 uppercase tracking-[0.1em]">Bidang Kajian</label>
+                  <select
+                    value={filterBidang}
+                    onChange={(e) => setFilterBidang(e.target.value)}
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none appearance-none cursor-pointer shadow-inner"
+                  >
+                    {uniqueBidang.map((b) => (<option key={b} value={b}>{b}</option>))}
+                  </select>
+                </div>
 
-              {/* Filter Status */}
-              <div className="md:col-span-3">
-                <label className="block text-xs font-bold text-gray-500 mb-1 uppercase tracking-wider">Status</label>
-                <select
-                  value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value)}
-                  className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-300"
-                >
-                  <option value="Semua">Semua Status</option>
-                  <option value="Menunggu">Menunggu</option>
-                  <option value="Diterima">Diterima</option>
-                </select>
-              </div>
+                <div className="md:col-span-3">
+                  <label className="block text-[10px] font-black text-slate-400 mb-2 uppercase tracking-[0.1em]">Status Review</label>
+                  <select
+                    value={filterStatus}
+                    onChange={(e) => setFilterStatus(e.target.value)}
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none appearance-none cursor-pointer shadow-inner"
+                  >
+                    <option value="Semua">Semua Status</option>
+                    <option value="Menunggu">Menunggu</option>
+                    <option value="Diterima">Diterima</option>
+                  </select>
+                </div>
 
-              {/* Search */}
-              <div className="md:col-span-4">
-                <label className="block text-xs font-bold text-gray-500 mb-1 uppercase tracking-wider">Cari Proposal</label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Nama, NPM, atau Judul..."
-                    className="w-full pl-9 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-300"
-                  />
+                <div className="md:col-span-4">
+                  <label className="block text-[10px] font-black text-slate-400 mb-2 uppercase tracking-[0.1em]">Cari Data</label>
+                  <div className="relative group">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={16} />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Nama, NPM, atau Judul..."
+                      className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium outline-none transition-all shadow-inner"
+                    />
+                  </div>
+                </div>
+
+                <div className="md:col-span-2">
+                  <button
+                    onClick={handleReset}
+                    className="w-full py-3 bg-slate-900 hover:bg-blue-600 text-white text-[10px] font-black rounded-xl transition-all shadow-lg active:scale-95 uppercase tracking-widest"
+                  >
+                    <Activity size={14} className="mr-2 inline" /> RESET
+                  </button>
                 </div>
               </div>
+            </div>
 
-              {/* Reset Button */}
-              <div className="md:col-span-2">
-                <button
-                  onClick={handleReset}
-                  className="w-full py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-600 text-xs font-bold rounded-lg transition flex items-center justify-center gap-2"
-                >
-                  <X size={14} /> RESET
-                </button>
+            {/* TABLE SECTION */}
+            <div className="bg-white rounded-[2rem] border border-white shadow-xl shadow-slate-200/50 overflow-hidden min-h-[500px]">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50/50 text-[11px] uppercase tracking-[0.15em] text-slate-400 font-black border-b border-slate-100">
+                      <th className="py-6 px-8 w-[25%]">Mahasiswa</th>
+                      <th className="py-6 px-8 w-[35%] text-center">Usulan Judul</th>
+                      <th className="py-6 px-8 text-center w-[15%]">Bidang</th>
+                      <th className="py-6 px-8 text-center w-[15%]">Status</th>
+                      <th className="py-6 px-8 text-center w-[10%]">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {loading ? (
+                      <tr><td colSpan={5} className="py-20 text-center text-slate-400 font-black animate-pulse uppercase tracking-widest">Sinkronisasi Data...</td></tr>
+                    ) : filteredProposals.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="py-24 text-center">
+                          <div className="flex flex-col items-center gap-3">
+                            <FileText size={48} className="text-slate-100" />
+                            <p className="text-slate-400 font-black uppercase tracking-widest text-xs">Proposal Tidak Ditemukan</p>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredProposals.map((item) => {
+                        const isAccepted = item.status === "Diterima";
+                        return (
+                          <tr key={item.id} className="group hover:bg-blue-50/30 transition-all duration-300">
+                            <td className="py-8 px-8">
+                              <div className="flex items-center gap-4">
+                                <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-black group-hover:bg-blue-600 group-hover:text-white transition-all uppercase">{item.user?.nama?.charAt(0) || "?"}</div>
+                                <div className="min-w-0">
+                                    <p className="text-sm font-black text-slate-800 leading-none truncate uppercase tracking-tight">{item.user?.nama ?? "-"}</p>
+                                    <p className="text-[10px] text-slate-400 font-black mt-2 tracking-widest">{item.user?.npm ?? "-"}</p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-8 px-8 text-center">
+                              <p className="text-[13px] font-bold text-slate-600 leading-relaxed line-clamp-2 italic normal-case tracking-tight">"{item.judul}"</p>
+                            </td>
+                            <td className="py-8 px-8 text-center">
+                               <span className="text-[10px] font-black text-slate-400 bg-slate-100 px-3 py-1 rounded-lg uppercase tracking-wider">{item.bidang}</span>
+                            </td>
+                            <td className="py-8 px-8 text-center">
+                              <span className={`inline-block px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border shadow-sm ${isAccepted ? "bg-emerald-100 text-emerald-700 border-emerald-200" : "bg-amber-100 text-amber-700 border-amber-200"}`}>
+                                {isAccepted ? "Ditetapkan" : "Menunggu"}
+                              </span>
+                            </td>
+                            <td className="py-8 px-8 text-center">
+                              <Link href={`/dosen/detailproposalmahasiswa?id=${item.id}`}>
+                                <button className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-lg active:scale-95 group/btn">
+                                  DETAIL <ArrowRight size={14} className="group-hover/btn:translate-x-1 transition-transform" />
+                                </button>
+                              </Link>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <div className="p-8 bg-slate-50/30 border-t border-slate-50 text-center">
+                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Total Terdata: {filteredProposals.length} Proposal Aktif</p>
               </div>
             </div>
           </div>
-
-          {/* TABLE */}
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden min-h-[400px]">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse table-fixed">
-                <thead>
-                  <tr className="bg-[#F9FAFB] border-b border-gray-200">
-                    <th className="py-4 px-6 text-xs font-bold text-gray-500 uppercase w-[20%]">
-                      Nama Mahasiswa
-                    </th>
-                    <th className="py-4 px-6 text-xs font-bold text-gray-500 uppercase w-[15%]">
-                      NPM
-                    </th>
-                    <th className="py-4 px-6 text-xs font-bold text-gray-500 uppercase w-[30%]">
-                      Judul
-                    </th>
-                    <th className="py-4 px-6 text-xs font-bold text-gray-500 uppercase text-center w-[10%]">
-                      Bidang
-                    </th>
-                    <th className="py-4 px-6 text-xs font-bold text-gray-500 uppercase text-center w-[15%]">
-                      Status
-                    </th>
-                    <th className="py-4 px-6 text-xs font-bold text-gray-500 uppercase text-center w-[10%]">
-                      Aksi
-                    </th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {loading ? (
-                    <tr>
-                      <td colSpan={6} className="py-10 text-center text-gray-400">
-                        Memuat data proposal...
-                      </td>
-                    </tr>
-                  ) : filteredProposals.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="py-12 text-center text-gray-400">
-                        <div className="flex flex-col items-center gap-2">
-                          <Search size={32} className="opacity-20" />
-                          <p>Data tidak ditemukan.</p>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredProposals.map((item) => {
-                      const isAccepted = item.status === "Diterima";
-
-                      return (
-                        <tr
-                          key={item.id}
-                          className="border-b border-gray-100 hover:bg-gray-50 transition-colors"
-                        >
-                          <td className="py-5 px-6 text-sm font-bold text-gray-900 truncate">
-                            {item.user?.nama ?? "-"}
-                          </td>
-
-                          <td className="py-5 px-6 text-sm font-medium text-gray-500">
-                            {item.user?.npm ?? "-"}
-                          </td>
-
-                          <td className="py-5 px-6 text-sm font-medium text-gray-800 line-clamp-2">
-                            {item.judul}
-                          </td>
-
-                          <td className="py-5 px-6 text-sm text-center text-gray-600">
-                            {item.bidang}
-                          </td>
-
-                          <td className="py-5 px-6">
-                            <div
-                              className={`flex items-center justify-center px-3 py-1.5 rounded-full text-[11px] font-bold w-fit mx-auto shadow-sm
-                                ${
-                                  isAccepted
-                                    ? "bg-[#DCFCE7] text-[#166534]"
-                                    : "bg-[#FDE68A] text-[#92400E]"
-                                }`}
-                            >
-                              {/* Icon Hourglass dihapus */}
-                              <span>{isAccepted ? "Diterima" : "Menunggu Verifikasi"}</span>
-                            </div>
-                          </td>
-
-                          <td className="py-5 px-6 text-center">
-                            <Link href={`detailproposalmahasiswa?id=${item.id}`}>
-                              <button className="px-4 py-2 bg-[#8C8C8C] text-white text-xs font-bold rounded-lg hover:bg-gray-600 transition-colors shadow-sm whitespace-nowrap">
-                                Lihat Detail
-                              </button>
-                            </Link>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </main>
-      </div>
+        </div>
+      </main>
     </div>
   );
 }

@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+// Sidebar dihapus
 import Link from "next/link"; 
 import { 
   ArrowLeft, User, Calendar, MapPin, MessageSquare, ExternalLink, Edit, X 
@@ -25,12 +26,23 @@ interface GuidanceSession {
   tanggal: string;
   jam: string;
   metode: string;
-  catatan: string;
+  keterangan: string;
   status: string; 
   hasil_bimbingan?: string;
 }
 
-export default function DetailMahasiswaBimbinganDosenPage() {
+interface proposalData {
+  id: string;
+  judul:string;
+  status: string;
+  user: {
+    nama: string;
+    npm: string;
+  };
+  
+}
+
+export default function DetailMahasiswaBimbinganKaprodiPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const proposalId = searchParams.get("id");
@@ -52,37 +64,33 @@ export default function DetailMahasiswaBimbinganDosenPage() {
   const fetchData = async () => {
     try {
       setLoading(true);
+      
+      const { data: { user } } = await supabase.auth.getUser();
+if (!user) throw new Error("User belum login");
 
-      // 🔐 ambil user login
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-      if (authError || !user) {
-        throw new Error("User belum login");
-      }
-
-      // 1️⃣ ambil proposal
-      const { data: propData, error: propError } = await supabase
-        .from("proposals")
-        .select(`
-          id,
-          judul,
-          status,
-          user:profiles (
-            nama,
-            npm
-          )
-        `)
-        .eq("id", proposalId)
-        .single();
-
+      // 1. Ambil Data Mahasiswa
+      const { data, error: propError } = await supabase
+  .from("proposals")
+  .select(`
+    id,
+    judul,
+    status,
+    user:profiles (
+      nama,
+      npm
+    )
+  `)
+  .eq("id", proposalId)
+  .single();
+  const propData = data as unknown as proposalData;
+  
       if (propError) throw propError;
 
-      // 2️⃣ ambil pembimbing
+      // 2. Ambil Pembimbing
       const { data: supervisors } = await supabase
         .from("thesis_supervisors")
         .select(`role, dosen:profiles!thesis_supervisors_dosen_id_fkey ( nama )`)
         .eq("proposal_id", proposalId);
-
       let p1 = "-", p2 = "-";
       supervisors?.forEach((s: any) => {
         if (s.role === "utama") p1 = s.dosen?.nama;
@@ -90,16 +98,18 @@ export default function DetailMahasiswaBimbinganDosenPage() {
       });
 
       setStudent({
-        proposal_id: propData.id,
-        nama: propData.user[0]?.nama || "Tanpa Nama",
-        npm: propData.user[0]?.npm || "-",
-        judul: propData.judul,
-        status: propData.status,
+        proposal_id: propData?.id,
+        nama: propData?.user?.nama || "Tanpa Nama",
+        npm: propData?.user?.npm || "-",
+        judul: propData?.judul,
+        status: propData?.status,
         pembimbing1: p1,
         pembimbing2: p2,
       });
 
-      // 3️⃣ ambil sesi bimbingan DOSEN LOGIN (Filter berdasarkan dosen_id)
+      
+
+      // 3. Ambil Riwayat Bimbingan
       const { data: guidanceData } = await supabase
         .from("guidance_sessions")
         .select("*")
@@ -135,8 +145,8 @@ export default function DetailMahasiswaBimbinganDosenPage() {
           tanggal: editingSession.tanggal,
           jam: editingSession.jam,
           metode: editingSession.metode,
-          catatan: editingSession.catatan,
-          status: editingSession.status, 
+          keterangan: editingSession.keterangan,
+          status: editingSession.status, // Ini yang mengubah jadi 'selesai'
         })
         .eq("id", editingSession.id);
 
@@ -144,7 +154,7 @@ export default function DetailMahasiswaBimbinganDosenPage() {
 
       alert("✅ Detail sesi berhasil diperbarui!");
       setIsEditModalOpen(false);
-      fetchData(); // Refresh data setelah update
+      fetchData(); // Refresh data
 
     } catch (err: any) {
       alert("Gagal update: " + err.message);
@@ -173,9 +183,14 @@ export default function DetailMahasiswaBimbinganDosenPage() {
   if (loading) return <div className="flex h-screen items-center justify-center text-gray-400">Memuat data...</div>;
   if (!student) return <div className="flex h-screen items-center justify-center text-gray-400">Data tidak ditemukan.</div>;
 
+
   return (
     <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-[#F8F9FB] font-sans text-slate-700">
+      
+      {/* HEADER tidak diperlukan karena ikut layout, atau bisa ditambahkan jika layoutnya kosong */}
+      
       <main className="flex-1 p-8">
+        {/* HEADER CONTENT */}
         <div className="mb-8">
           <button onClick={() => router.back()} className="flex items-center gap-2 text-gray-500 hover:text-gray-700 mb-4 transition-colors">
             <ArrowLeft size={18} /> <span className="text-sm font-medium">Kembali</span>
@@ -184,6 +199,7 @@ export default function DetailMahasiswaBimbinganDosenPage() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          
           {/* INFO MAHASISWA */}
           <div className="lg:col-span-1 space-y-6">
             <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
@@ -242,12 +258,21 @@ export default function DetailMahasiswaBimbinganDosenPage() {
                           </div>
                           <div className="flex items-start gap-3">
                             <MessageSquare size={16} className="text-gray-400 mt-0.5" />
-                            <div><p className="text-xs font-bold text-gray-500 uppercase">Catatan / Lokasi</p><p className="text-sm font-medium text-gray-700">{sesi.catatan || "-"}</p></div>
+                            <div><p className="text-xs font-bold text-gray-500 uppercase">Keterangan / Lokasi</p><p className="text-sm font-medium text-gray-700">{sesi.keterangan || "-"}</p></div>
                           </div>
                         </div>
 
+                        {/* HASIL BIMBINGAN */}
+                        {sesi.status === 'selesai' && sesi.hasil_bimbingan && (
+                          <div className="mt-4 pt-4 border-t border-gray-100">
+                            <p className="text-xs font-bold text-gray-500 mb-1">Hasil Bimbingan:</p>
+                            <p className="text-sm text-gray-700 bg-green-50 p-3 rounded-lg border border-green-100">{sesi.hasil_bimbingan}</p>
+                          </div>
+                        )}
+
                         {/* ACTIONS */}
                         <div className="mt-4 flex justify-end gap-3 pt-3 border-t border-gray-50 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {/* TOMBOL EDIT */}
                           <button 
                             className="flex items-center gap-1.5 text-xs font-bold text-gray-600 hover:text-gray-900 px-3 py-1.5 rounded transition bg-gray-100 hover:bg-gray-200"
                             onClick={() => handleEditClick(sesi)}
@@ -255,6 +280,7 @@ export default function DetailMahasiswaBimbinganDosenPage() {
                             <Edit size={14} /> Edit Detail
                           </button>
 
+                          {/* TOMBOL LIHAT (Link ke Halaman Detail Sesi Dosen) */}
                           <Link 
                             href={`/dosen/sesibimbingan?id=${sesi.id}`}
                             className="flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-700 px-3 py-1.5 rounded transition hover:bg-blue-50"
@@ -284,6 +310,8 @@ export default function DetailMahasiswaBimbinganDosenPage() {
               </div>
 
               <form onSubmit={handleSaveEdit} className="p-6 space-y-4">
+                
+                {/* TANGGAL & JAM */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Tanggal</label>
@@ -305,6 +333,7 @@ export default function DetailMahasiswaBimbinganDosenPage() {
                   </div>
                 </div>
 
+                {/* METODE & STATUS */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Metode</label>
@@ -317,12 +346,14 @@ export default function DetailMahasiswaBimbinganDosenPage() {
                       <option value="Daring">Daring</option>
                     </select>
                   </div>
+                  
+                  {/* UPDATE STATUS DISINI */}
                   <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Status</label>
                     <select 
                       value={editingSession.status}
                       onChange={(e) => setEditingSession({...editingSession, status: e.target.value})}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-100"
+                      className={`w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-100 ${editingSession.status === 'selesai' ? 'text-green-600 bg-green-50' : 'text-gray-700'}`}
                     >
                       <option value="belum_dimulai">Belum Mulai</option>
                       <option value="selesai">Selesai </option>
@@ -331,26 +362,39 @@ export default function DetailMahasiswaBimbinganDosenPage() {
                   </div>
                 </div>
 
+                {/* CATATAN */}
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Catatan / Lokasi</label>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">keterangan / Lokasi</label>
                   <textarea 
                     rows={3}
-                    value={editingSession.catatan}
-                    onChange={(e) => setEditingSession({...editingSession, catatan: e.target.value})}
+                    value={editingSession.keterangan}
+                    onChange={(e) => setEditingSession({...editingSession, keterangan: e.target.value})}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 resize-none"
                   />
                 </div>
 
                 <div className="flex justify-end gap-3 pt-4">
-                  <button type="button" onClick={() => setIsEditModalOpen(false)} className="px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-100 rounded-lg transition">Batal</button>
-                  <button type="submit" disabled={savingEdit} className="px-6 py-2 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition shadow-sm disabled:opacity-50">
+                  <button 
+                    type="button" 
+                    onClick={() => setIsEditModalOpen(false)}
+                    className="px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-100 rounded-lg transition"
+                  >
+                    Batal
+                  </button>
+                  <button 
+                    type="submit" 
+                    disabled={savingEdit}
+                    className="px-6 py-2 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition shadow-sm disabled:opacity-50"
+                  >
                     {savingEdit ? "Menyimpan..." : "Simpan Perubahan"}
                   </button>
                 </div>
+
               </form>
             </div>
           </div>
         )}
+
       </main>
     </div>
   );

@@ -57,6 +57,7 @@ export default function AccProposalKaprodi() {
       `)
       .eq("id", proposalId)
       .single();
+      
 
     if (error) {
       console.error("Fetch proposal error:", error);
@@ -155,25 +156,20 @@ export default function AccProposalKaprodi() {
   return (
     <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-[#F8F9FB] font-sans text-slate-700">
 
-      {/* HEADER */}
-      <header className="h-20 bg-white border-b border-gray-100 flex items-center justify-between px-8 sticky top-0 z-20 shrink-0">
-        <div className="relative w-96">
-          <Search
-            className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300"
-            size={20}
-          />
-          <input 
-            type="text" 
-            placeholder="Search" 
-            className="w-full pl-12 pr-4 py-2.5 bg-gray-50 border border-gray-100 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-100 transition-all"
-          />
-        </div>
-
-        <button className="relative p-2 hover:bg-gray-50 rounded-full transition-colors">
-          <Bell size={22} className="text-gray-400" />
-          <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
-        </button>
-      </header>
+      {/* HEADER - Glassmorphism */}
+              <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
+                <div className="flex items-center gap-6">
+                  <div className="relative w-72 group">
+                  </div>
+                </div>
+      
+                <div className="flex items-center gap-6">
+                  {/* Minimalist SIMPRO Text */}
+                  <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
+                    Simpro
+                  </span>
+                </div>
+              </header>
 
       {/* MAIN */}
       <main className="flex-1 p-8">

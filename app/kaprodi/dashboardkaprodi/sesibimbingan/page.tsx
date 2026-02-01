@@ -28,7 +28,6 @@ interface SessionDetail {
   tanggal: string;
   jam: string;
   metode: string;
-  catatan: string; 
   hasil_bimbingan: string; 
   status: string; 
   kehadiran_mahasiswa: string; 
@@ -44,10 +43,11 @@ interface SessionDetail {
   dosen: {
     nama: string;
   };
-  drafts: {
+  drafts?: {
       id: string;
       file_url: string;
       uploaded_at: string;
+      catatan: string | null;
   }[];
 }
 
@@ -68,6 +68,8 @@ export default function SesiBimbinganPage() {
   const [statusSesi, setStatusSesi] = useState<string | null>(null);       // guidance_sessions.status
   const [statusRevisi, setStatusRevisi] = useState<string | null>(null);   // session_feedbacks.status_revisi
   const [feedbackId, setFeedbackId] = useState<string | null>(null);
+  const [existingFileUrl, setExistingFileUrl] = useState<string | null>(null);
+  const [namaBersihURL, setNamaBersih] = useState<string | null>(null);
 
 
 
@@ -103,12 +105,12 @@ export default function SesiBimbinganPage() {
     drafts:session_drafts (
       id,
       file_url,
-      uploaded_at
+      uploaded_at,
+      catatan
     )
   `)
   .eq("id", sessionId)
   .single();
-
 
       if (error) throw error;
 
@@ -135,9 +137,14 @@ const { data: feedbackData, error: feedbackError } = await supabase
 
 if (feedbackError) throw feedbackError;
 
-    setFeedbackId(feedbackData[0].id);
-    setKomentar(feedbackData[0]?.komentar || "");
-    setStatusRevisi(feedbackData[0]?.status_revisi || null);
+   const latestFeedback = feedbackData?.[0] ?? null;
+ 
+
+setFeedbackId(latestFeedback?.id ?? null);
+setKomentar(latestFeedback?.komentar ?? "");
+setStatusRevisi(latestFeedback?.status_revisi ?? null);
+setExistingFileUrl(latestFeedback?.file_url ?? null);
+
 
 
 
@@ -179,6 +186,29 @@ if (feedbackError) throw feedbackError;
     if (error) throw error;
 
     window.open(data.signedUrl, "_blank");
+  } catch (err) {
+    console.error(err);
+    alert("Gagal mengunduh file");
+  }
+};
+
+  const handleDownloadFeedback = async (fileUrl: string) => {
+  try {
+   
+    // ambil path SETELAH nama bucket
+    const path = fileUrl.split("feedback_draft/")[1];
+  
+
+    if (!path) throw new Error("Path file tidak valid");
+
+    const { data, error } = await supabase.storage
+      .from("feedback_draft")
+      .createSignedUrl(path, 3600);
+    console.log("data",data)
+    if (error) throw error;
+
+    window.open(data.signedUrl, "_blank");
+    console.log("datasigned",data.signedUrl)
   } catch (err) {
     console.error(err);
     alert("Gagal mengunduh file");
@@ -239,9 +269,10 @@ if (feedbackError) throw feedbackError;
       status_revisi: statusRevisi,
     });
 }
-
-    alert("✅ Feedback berhasil disimpan");
+  
+    
     setFileBalasan(null);
+    await fetchData();
 
     const { error: sessionError } = await supabase
       .from("guidance_sessions")
@@ -253,8 +284,7 @@ if (feedbackError) throw feedbackError;
 
     if (sessionError) throw sessionError;
 
-    alert("✅ Hasil bimbingan berhasil disimpan");
-
+   alert("✅ Feedback berhasil disimpan");
     router.refresh();
 
   } catch (err: any) {
@@ -363,7 +393,7 @@ if (feedbackError) throw feedbackError;
 
   if (loading) return <div className="flex h-screen items-center justify-center text-gray-400">Memuat sesi...</div>;
   if (!session) return <div className="flex h-screen items-center justify-center text-gray-400">Sesi tidak ditemukan.</div>;
-  const draft = session.drafts[0] ?? null;
+  const draft = session.drafts?.[0] ?? null;
 
   return (
     <div className="flex min-h-screen bg-[#F8F9FB] font-sans text-slate-700">
@@ -447,7 +477,8 @@ if (feedbackError) throw feedbackError;
               <div className="mb-6">
                 <label className="text-sm font-bold text-gray-700 block mb-2">Catatan dari Mahasiswa</label>
                 <div className="w-full bg-gray-50 border border-gray-200 rounded-xl p-4 text-sm text-gray-600 min-h-[80px]">
-                  {session.catatan || "-"}
+                  {session.drafts?.[0]?.catatan || "-"}
+                 
                 </div>
               </div>
 
@@ -539,29 +570,98 @@ if (feedbackError) throw feedbackError;
               </div>
             )}
 
-            {/* File Upload Balasan */}
-            <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-              <h3 className="text-sm font-bold text-gray-900 mb-4">Unggah File Balasan (Opsional)</h3>
-              <div 
-                onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-gray-300 rounded-xl p-8 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-gray-50 transition group"
-              >
-                <div className="p-3 bg-blue-50 rounded-full mb-3 group-hover:scale-110 transition-transform">
-                  <UploadCloud size={24} className="text-blue-500" />
-                </div>
-                <p className="text-xs font-bold text-gray-700 mb-1">
-                  {fileBalasan ? fileBalasan.name : "Klik untuk upload file"}
-                </p>
-                <p className="text-[10px] text-gray-400">
-                  {fileBalasan ? "File siap diunggah" : "PDF / DOCX (Max 5MB)"}
-                </p>
-                <input type="file" ref={fileInputRef} className="hidden" onChange={(e) => setFileBalasan(e.target.files?.[0] || null)} />
-              </div>
-              {fileBalasan && (
-                <button onClick={(e) => { e.stopPropagation(); setFileBalasan(null); }} className="mt-3 w-full py-2 text-xs text-red-500 font-bold hover:bg-red-50 rounded-lg transition">Batalkan File</button>
-              )}
-            </div>
+           {/* File Upload Balasan & Display */}
+<div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+  <h3 className="text-sm font-bold text-gray-900 mb-4">File Balasan Dosen</h3>
+  
+ 
+ {/* 1. TAMPILAN FILE YANG SUDAH TERUPLOAD DI DATABASE */}
+{existingFileUrl && (
+  <div className="flex items-center justify-between bg-blue-50 border border-blue-100 p-4 rounded-xl mb-4 shadow-sm">
+    <div className="flex items-center gap-3 overflow-hidden">
+      <div className="p-2 bg-blue-100 rounded-lg text-blue-600">
+        <FileText size={20} />
+      </div>
+      <div className="overflow-hidden">
+        <p className="text-xs font-bold text-blue-900 truncate">
+          {decodeURIComponent(existingFileUrl?.split("/").pop()?.split("_").slice(1).join("_") || "File Pelengkap")}
+        </p>
+        <p className="text-[10px] text-blue-600 font-medium">File telah dikirim</p>
+      </div>
+    </div>
+    <div className="flex items-center gap-1">
+      <button
+        onClick={() => handleDownloadFeedback(existingFileUrl)}
+        className="text-blue-700 hover:text-blue-900 p-2 transition"
+        title="Unduh File"
+      >
+        <Download size={18} />
+      </button>
+      
+      
+    </div>
+  </div>
+)}
 
+{/* 2. AREA UNGGAH FILE (Hanya muncul jika BELUM ada file di database) */}
+{!existingFileUrl && (
+  <div className="space-y-3">
+    <div 
+      onClick={() => fileInputRef.current?.click()}
+      className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition group ${
+        fileBalasan 
+          ? "border-green-300 bg-green-50" 
+          : "border-gray-300 hover:bg-gray-50"
+      }`}
+    >
+      <div className={`p-3 rounded-full mb-3 group-hover:scale-110 transition-transform ${
+        fileBalasan ? "bg-green-100 text-green-600" : "bg-blue-50 text-blue-500"
+      }`}>
+        <UploadCloud size={24} />
+      </div>
+      <p className="text-xs font-bold text-gray-700 mb-1">
+        {fileBalasan ? fileBalasan.name : "Klik untuk upload file balasan"}
+      </p>
+      <p className="text-[10px] text-gray-400">
+        {fileBalasan ? "File siap diunggah" : "PDF / DOCX (Max 5MB)"}
+      </p>
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        className="hidden" 
+        onChange={(e) => setFileBalasan(e.target.files?.[0] || null)} 
+      />
+    </div>
+
+    {/* Tombol Batal jika baru sekedar memilih file di komputer (belum save ke DB) */}
+    {fileBalasan && (
+      <button 
+        onClick={(e) => { 
+          e.stopPropagation(); 
+          setFileBalasan(null); 
+        }} 
+        className="w-full py-2 text-xs text-red-500 font-bold hover:bg-red-50 rounded-lg transition"
+      >
+        Batalkan Pilihan
+      </button>
+    )}
+  </div>
+)}
+
+  {/* TOMBOL BATALKAN UPLOAD BARU */}
+  {fileBalasan && (
+    <button 
+      onClick={(e) => { 
+        e.stopPropagation(); 
+        setFileBalasan(null); 
+      }} 
+      className="mt-3 w-full py-2 text-xs text-red-500 font-bold hover:bg-red-50 rounded-lg transition"
+    >
+      Batalkan Perubahan File
+    </button>
+  )}
+</div>
+                
             {/* Komentar Dosen */}
             <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm sticky top-6">
               <div className="flex items-center gap-3 mb-4">

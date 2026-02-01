@@ -103,53 +103,66 @@ export default function PenetapanJadwalPage() {
   }, [requestId]);
 
   const handleTetapkanJadwal = async () => {
-    if (!requestId || !studentData) return;
-    if (!penguji1 || !penguji2 || !tanggal || !jam || !ruangan) {
-      alert("Harap lengkapi semua form jadwal dan penguji.");
-      return;
-    }
-    if (penguji1 === penguji2) {
-      alert("Penguji 1 dan 2 tidak boleh sama.");
-      return;
-    }
+  if (!requestId || !studentData) return;
+  if (!penguji1 || !penguji2 || !tanggal || !jam || !ruangan) {
+    alert("Harap lengkapi semua form jadwal dan penguji.");
+    return;
+  }
+  if (penguji1 === penguji2) {
+    alert("Penguji 1 dan 2 tidak boleh sama.");
+    return;
+  }
 
-    try {
-      setLoading(true);
-      const { error: schedError } = await supabase
-        .from('seminar_schedules')
-        .insert({
-          seminar_request_id: requestId,
-          tanggal: tanggal,
-          jam: jam,
-          ruangan: ruangan,
-        });
+  try {
+    setLoading(true);
 
-      if (schedError) throw schedError;
+    // 1. Gunakan UPSERT untuk tabel jadwal agar tidak error duplicate key
+    const { error: schedError } = await supabase
+      .from('seminar_schedules')
+      .upsert({
+        seminar_request_id: requestId,
+        tanggal: tanggal,
+        jam: jam,
+        ruangan: ruangan,
+      }, { onConflict: 'seminar_request_id' }); // Sesuai dengan unique constraint
 
-      const { error: examError } = await supabase
-        .from('examiners')
-        .insert([
-          { seminar_request_id: requestId, dosen_id: penguji1, role: 'penguji1' },
-          { seminar_request_id: requestId, dosen_id: penguji2, role: 'penguji2' }
-        ]);
+    if (schedError) throw schedError;
 
-      if (examError) throw examError;
+    // 2. Gunakan UPSERT untuk dewan penguji
+    // Hapus data lama dulu atau gunakan upsert berdasarkan role
+    const { error: deleteExamError } = await supabase
+      .from('examiners')
+      .delete()
+      .eq('seminar_request_id', requestId);
 
-      const { error: updateError } = await supabase
-        .from('seminar_requests')
-        .update({ status: 'Dijadwalkan' })
-        .eq('id', requestId);
+    if (deleteExamError) throw deleteExamError;
 
-      if (updateError) throw updateError;
+    const { error: examError } = await supabase
+      .from('examiners')
+      .insert([
+        { seminar_request_id: requestId, dosen_id: penguji1, role: 'penguji1' },
+        { seminar_request_id: requestId, dosen_id: penguji2, role: 'penguji2' }
+      ]);
 
-      alert("✅ Jadwal seminar berhasil ditetapkan!");
-      router.push('/kaprodi/dashboardkaprodi/pengajuanseminar');
-    } catch (err: any) {
-      alert("Gagal menetapkan jadwal: " + err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+    if (examError) throw examError;
+
+    // 3. Update status ke 'Dijadwalkan' (Pastikan status ini ada di check constraint database)
+    const { error: updateError } = await supabase
+      .from('seminar_requests')
+      .update({ status: 'Disetujui' }) 
+      .eq('id', requestId);
+
+    if (updateError) throw updateError;
+
+    alert("✅ Jadwal seminar berhasil ditetapkan!");
+    router.push('/kaprodi/dashboardkaprodi/pengajuanseminar');
+  } catch (err: any) {
+    // Menangkap error spesifik constraint
+    alert("Gagal menetapkan jadwal: " + err.message);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const getSupervisor = (role: string) => {
     const sups = studentData?.proposal?.supervisors || [];
@@ -164,18 +177,18 @@ export default function PenetapanJadwalPage() {
       
       {/* --- HEADER --- */}
       <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
-        <div className="relative w-96 group">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={18} />
-          <input type="text" placeholder="Cari data bimbingan..." className="w-full pl-12 pr-4 py-2.5 bg-slate-100 border-transparent border focus:bg-white focus:border-blue-400 rounded-xl text-sm outline-none transition-all shadow-inner" />
-        </div>
-        <div className="flex items-center gap-4">
-          <button className="p-2.5 text-slate-400 hover:bg-slate-100 rounded-xl transition-all relative">
-            <Bell size={22} />
-            <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
-          </button>
-          <div className="h-10 w-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold shadow-lg shadow-blue-200 ml-2 uppercase tracking-tighter">K</div>
-        </div>
-      </header>
+          <div className="flex items-center gap-6">
+            <div className="relative w-72 group">
+            </div>
+          </div>
+
+          <div className="flex items-center gap-6">
+            {/* Minimalist SIMPRO Text */}
+            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
+              Simpro
+            </span>
+          </div>
+        </header>
 
       {/* --- MAIN CONTENT --- */}
       <main className="flex-1 p-10 max-w-[1400px] mx-auto w-full">
@@ -239,28 +252,7 @@ export default function PenetapanJadwalPage() {
             </div>
 
             {/* Document Card */}
-            <div className="bg-white rounded-[2.5rem] border border-white shadow-xl shadow-slate-200/50 p-10">
-              <div className="flex items-center gap-3 mb-8">
-                <div className="p-2.5 bg-blue-600 rounded-xl text-white shadow-lg shadow-blue-200"><FileText size={20} /></div>
-                <h3 className="text-lg font-black text-slate-800 uppercase tracking-tighter text-[13px]">Dokumen Skripsi</h3>
-              </div>
-              <div className="bg-slate-50 rounded-[2rem] border border-slate-100 p-8 flex flex-col md:flex-row items-center justify-between group hover:bg-white hover:border-blue-100 transition-all duration-300 shadow-inner hover:shadow-xl">
-                <div className="flex items-center gap-6 overflow-hidden">
-                  <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center text-red-500 shadow-sm border border-slate-100 shrink-0 group-hover:scale-105 transition-transform"><FileText size={32} /></div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-black text-slate-800 truncate pr-4 uppercase tracking-tight">{studentData.proposal.file_path?.split('/').pop() || "Berkas Belum Diunggah"}</p>
-                    <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Status: Final Draft</p>
-                  </div>
-                </div>
-                {fileUrl ? (
-                  <a href={fileUrl} target="_blank" rel="noreferrer" className="mt-6 md:mt-0 flex items-center gap-3 px-8 py-3.5 bg-slate-900 text-white text-xs font-black rounded-2xl hover:bg-blue-600 transition-all shadow-lg active:scale-95 uppercase tracking-widest shrink-0">
-                    <Download size={18} /> Lihat PDF
-                  </a>
-                ) : (
-                  <div className="mt-6 md:mt-0 px-8 py-3.5 bg-slate-100 text-slate-300 text-xs font-black rounded-2xl uppercase tracking-widest cursor-not-allowed border border-slate-200">Berkas Kosong</div>
-                )}
-              </div>
-            </div>
+    
           </div>
 
           {/* RIGHT COLUMN (Scheduling Form) */}
