@@ -39,7 +39,8 @@ export default function AccProposalKaprodi() {
   // ================= FETCH DETAIL =================
 
   const fetchProposal = async () => {
-    if (!proposalId) return;
+    if (!proposalId) 
+      return;
 
     setLoading(true);
 
@@ -63,8 +64,13 @@ export default function AccProposalKaprodi() {
       console.error("Fetch proposal error:", error);
       // Jangan alert di sini agar UX tidak terganggu jika hanya refresh
     } else {
-      setProposal(data);
-    }
+  console.log("RAW PROPOSAL DATA:", data);
+  console.log("USER FIELD:", data.user);
+  console.log("IS ARRAY?", Array.isArray(data.user));
+  setProposal(data);
+}
+
+    
 
     setLoading(false);
   };
@@ -150,7 +156,7 @@ export default function AccProposalKaprodi() {
       </div>
     );
   }
-
+const user = proposal.user?.[0];
   // ================= RENDER =================
 
   return (
@@ -185,10 +191,10 @@ export default function AccProposalKaprodi() {
               </div>
               <div>
                 <h2 className="text-xl font-bold text-gray-900">
-                  {proposal.user?.nama || "Tanpa Nama"}
+                  {user?.nama ?? "Tanpa Nama"}
                 </h2>
                 <p className="text-gray-500 font-medium mt-1">
-                  {proposal.user?.npm || "-"}
+                  {user?.npm ?? "-"}
                 </p>
               </div>
             </div>
