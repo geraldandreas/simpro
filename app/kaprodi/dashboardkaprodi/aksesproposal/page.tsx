@@ -46,7 +46,7 @@ export default function AksesProposalPage() {
         .returns<ProposalItem[]>();
 
       if (error) throw error;
-      console.log("data", data)
+      
       
       setProposals(data);
     } catch (err) {
@@ -85,18 +85,18 @@ export default function AksesProposalPage() {
       
        {/* HEADER - Glassmorphism */}
               <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
-                <div className="flex items-center gap-6">
-                  <div className="relative w-72 group">
-                  </div>
-                </div>
-      
-                <div className="flex items-center gap-6">
-                  {/* Minimalist SIMPRO Text */}
-                  <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
-                    Simpro
-                  </span>
-                </div>
-              </header>
+          <div className="flex items-center gap-6">
+            <div className="relative w-72 group">
+            </div>
+          </div>
+
+          <div className="flex items-center gap-6">
+            {/* Minimalist SIMPRO Text */}
+            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
+              Simpro
+            </span>
+          </div>
+        </header>
 
       <main className="p-10 max-w-[1400px] mx-auto w-full">
         <div className="mb-10">

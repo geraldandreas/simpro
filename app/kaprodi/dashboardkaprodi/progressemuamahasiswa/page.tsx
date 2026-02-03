@@ -64,6 +64,7 @@ export default function ProgresSemuaMahasiswaKaprodiPage() {
       const mapped: StudentProgress[] = (proposals || []).map((p: any) => {
         let timelineStatus = "Pengajuan Proposal";
         if (p.thesis_supervisors?.length > 0) timelineStatus = "Proses Bimbingan";
+        
 
         const seminar = p.seminar_requests?.find((s: any) => s.tipe === "seminar");
         const sidang = p.seminar_requests?.find((s: any) => s.tipe === "sidang");

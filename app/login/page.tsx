@@ -145,45 +145,6 @@ export default function Login() {
             <span className="text-gray-700 font-normal">Masuk Dengan Google</span>
           </button>
 
-          {/* Divider */}
-          <div className="flex items-center my-10">
-            <div className="flex-1 h-px bg-gray-300" />
-            <span className="px-4 text-gray-400 text-sm">Atau</span>
-            <div className="flex-1 h-px bg-gray-300" />
-          </div>
-
-          {/* INPUT FIELDS */}
-          <div className="space-y-6">
-            <div>
-              <label className="text-sm font-normal text-gray-600">Email Unpad</label>
-              <input 
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg mt-1.5 p-3.5 focus:border-blue-500 outline-none transition" 
-                placeholder="email@student.unpad.ac.id"
-              />
-            </div>
-
-            <div>
-              <div className="flex justify-between items-center">
-                <label className="text-sm font-normal text-gray-600">Kata Sandi</label>
-                <button className="text-gray-400 text-sm flex items-center gap-1">
-                   <span className="text-xs">👁️</span> Hide
-                </button>
-              </div>
-              <input 
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg mt-1.5 p-3.5 focus:border-blue-500 outline-none transition" 
-                placeholder="••••••••"
-              />
-              <div className="text-right mt-2">
-                <a href="#" className="text-sm font-medium text-black underline">Lupa Password?</a>
-              </div>
-            </div>
-          </div>
 
           {/* REGISTER LINK */}
           <p className="mt-8 text-sm font-normal text-gray-700">
@@ -192,15 +153,6 @@ export default function Login() {
               Daftar
             </a>
           </p>
-
-          {/* LOGIN BUTTON */}
-          <button 
-            onClick={handleLogin}
-            disabled={loading}
-            className="w-full bg-[#71a1cc] text-white font-medium py-4 rounded-3xl mt-6 hover:bg-[#638db3] transition shadow-md active:scale-[0.98]"
-          >
-            {loading ? 'Loading...' : 'Masuk'}
-          </button>
 
         </div>
       </div>

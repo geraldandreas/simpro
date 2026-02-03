@@ -177,7 +177,7 @@ export default function DetailProgresTendikPage() {
   if (loading) return <div className="flex h-screen items-center justify-center bg-[#F4F7FE] text-blue-600 font-black animate-pulse uppercase tracking-[0.3em]">Loading System...</div>;
 
   return (
-    <div className="flex h-screen bg-[#F4F7FE] font-sans text-slate-700 overflow-hidden uppercase tracking-tighter">
+    <div className="flex h-screen bg-[#F4F7FE] font-sans text-slate-700 overflow-hidden">
       <SidebarTendik />
 
       <div className="flex-1 ml-64 flex flex-col h-full">

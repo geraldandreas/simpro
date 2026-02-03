@@ -105,41 +105,31 @@ export default function DashboardTendik() {
   }, []);
 
   return (
-    <div className="flex min-h-screen bg-[#F4F7FE] font-sans text-slate-700 uppercase tracking-tighter">
+    <div className="flex min-h-screen ">
       <SidebarTendik />
       <main className="flex-1 ml-64 p-10">
         
         {/* HEADER */}
-        <div className="flex justify-between items-center mb-10">
-          <div>
-            <h1 className="text-3xl font-black text-slate-800">Panel Kendali Tendik</h1>
-            <p className="text-slate-500 font-bold mt-1 tracking-widest text-xs uppercase opacity-60">Sistem Informasi Skripsi (SIMPRO)</p>
-          </div>
-          <div className="flex items-center gap-4 bg-white p-2 px-4 rounded-2xl shadow-sm border border-slate-100">
-             <Bell size={20} className="text-slate-300" />
-             <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-black text-xs">T</div>
-          </div>
+    <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
+                          <div className="flex items-center gap-6">
+                            <div className="relative w-72 group">
+                            </div>
+                          </div>
+                
+                          <div className="flex items-center gap-6">
+                            {/* Minimalist SIMPRO Text */}
+                            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
+                              Simpro
+                            </span>
+                          </div>
+                        </header>
+
+        {/* STATS */}
+        <div className="grid grid-cols-2 gap-10 mb-10  justify-items-center">
+          <StatCard icon={<Users size={24}/>} count={statUsulan} label="Usulan Judul" color="text-blue-600" />
+          <StatCard icon={<FileText size={24}/>} count={statVerifikasi} label="Perlu Verifikasi" color="text-red-500" />
         </div>
-
-       <div className="flex justify-center gap-10 mb-20">
-  <div className="w-full max-w-sm">
-    <StatCard 
-      icon={<Users size={24}/>} 
-      count={statUsulan} 
-      label="Usulan Judul" 
-      color="text-blue-600" 
-    />
-  </div>
-  <div className="w-full max-w-sm">
-    <StatCard 
-      icon={<FileText size={24}/>} 
-      count={statVerifikasi} 
-      label="Perlu Verifikasi" 
-      color="text-red-500" 
-    />
-  </div>
-</div>
-
+      <main className="flex-1 p-10"></main>
         {/* TABLE */}
         <section className="bg-white rounded-[2.5rem] border border-white shadow-xl shadow-slate-200/50 overflow-visible">
           <div className="p-8 border-b border-slate-50 flex justify-between items-center bg-slate-50/30">

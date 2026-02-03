@@ -71,7 +71,7 @@ export default function SidebarDosen() {
   };
 
   return (
-    <aside className="w-72 bg-[#F3F5F9] border-r border-gray-200 h-screen flex flex-col sticky top-0 overflow-y-auto">
+    <aside className="w-64 bg-[#F3F5F9] border-r border-gray-200 h-screen flex flex-col sticky top-0 overflow-y-auto">
       
       {/* ================= USER PROFILE ================= */}
       <div className="p-6 pb-2">

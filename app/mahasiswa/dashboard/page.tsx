@@ -59,38 +59,52 @@ const [supervisors, setSupervisors] = useState<Supervisor[]>([]);
         if (!auth?.user) return;
         const userId = auth.user.id;
 
-        // 1. Ambil Proposal
-        const { data: proposal } = await supabase.from("proposals").select("id, status").eq("user_id", userId).maybeSingle();
-        if (!proposal) { setActiveStep(0); return; }
-        
+    
+      // 1. PROPOSAL
+      // ===============================
+      const { data: proposal } = await supabase
+        .from("proposals")
+        .select("id, status")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      // default
+      let step = 0;
+
+      if (!proposal) {
+        setActiveStep(0);
+        return;
+      }
+      step = 1; // pengajuan judul
+      
         // 2. Cek Bimbingan & Supervisor
         const { data: supervisorData } = await supabase
-  .from('thesis_supervisors')
-  .select(`
-    role,
-    profiles!dosen_id (
-      id,
-      nama,
-      email,
-      phone
-    )
-  `)
-  .eq('proposal_id', proposal.id);
+        .from('thesis_supervisors')
+        .select(`
+          role,
+          profiles!dosen_id (
+            id,
+            nama,
+            email,
+            phone
+          )
+        `)
+        .eq('proposal_id', proposal.id);
 
         const { data: sessions } = await supabase.from('guidance_sessions').select('dosen_id, session_feedbacks(status_revisi)').eq('proposal_id', proposal.id).eq('kehadiran_mahasiswa', 'hadir');
         const { data: seminarReq } = await supabase.from('seminar_requests').select('approved_by_p1, approved_by_p2, status').eq('proposal_id', proposal.id).maybeSingle();
 
        if (supervisorData) {
-  const mapped: Supervisor[] = supervisorData.map((s: any) => ({
-    id: s.profiles.id,
-    name: s.profiles.nama,
-    email: s.profiles.email,
-    phone: s.profiles.phone,
-    role:
-      s.role === 'utama' || s.role === 'pembimbing1'
-        ? 'Pembimbing Utama'
-        : 'Co-Pembimbing',
-  }));
+           const mapped: Supervisor[] = supervisorData.map((s: any) => ({
+            id: s.profiles.id,
+            name: s.profiles.nama,
+            email: s.profiles.email,
+            phone: s.profiles.phone,
+            role:
+              s.role === 'utama' || s.role === 'pembimbing1'
+                ? 'Pembimbing Utama'
+                : 'Co-Pembimbing',
+        }));
 
   setSupervisors(mapped);
 }
@@ -118,7 +132,8 @@ let p2Count = 0;
 
         const approvedByAll = seminarReq?.approved_by_p1 === true && seminarReq?.approved_by_p2 === true;
         const eligible = p1Count >= 10 && p2Count >= 10 && approvedByAll;
-
+      
+  
         setBimbinganCount({ p1: p1Count, p2: p2Count });
         setIsAccDosen(approvedByAll);
         setIsEligible(eligible);

@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import Sidebar from "@/components/sidebar-dosen";
 import Link from "next/link";
 import { 
   Search, 
@@ -77,31 +76,10 @@ export default function AksesProposalPage() {
 
   return (
     <div className="flex min-h-screen bg-[#F8F9FB] font-sans text-slate-700">
-      {/* SIDEBAR - Menggunakan properti flex bawaan untuk mencegah gap */}
-      <Sidebar />
+     
 
       {/* MAIN CONTAINER - Menggunakan flex-1 agar memenuhi sisa layar tanpa margin manual */}
       <main className="flex-1 flex flex-col h-screen overflow-hidden">
-        
-        <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
-                  <div className="flex items-center gap-6">
-                    <div className="relative w-72 group">
-                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" size={16} />
-                      <input 
-                        type="text" 
-                        placeholder="Cari data..." 
-                        className="w-full pl-10 pr-4 py-2 bg-slate-100 border-transparent border focus:bg-white focus:border-blue-400 rounded-xl text-xs outline-none transition-all shadow-inner uppercase tracking-widest"
-                      />
-                    </div>
-                  </div>
-        
-                  <div className="flex items-center gap-6">
-                    {/* Minimalist SIMPRO Text */}
-                    <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
-                      Simpro
-                    </span>
-                  </div>
-                </header>
 
         {/* SCROLLABLE AREA - Memisahkan scroll agar header tetap sticky */}
         <div className="flex-1 overflow-y-auto p-10 custom-scrollbar">

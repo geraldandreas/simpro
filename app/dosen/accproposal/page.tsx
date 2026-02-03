@@ -1,9 +1,6 @@
 "use client";
-export const dynamic = "force-dynamic";
-
 
 import React, { useEffect, useState } from "react";
-import Sidebar from "@/components/sidebar-dosen";
 import { 
   Search, 
   Bell, 
@@ -25,12 +22,12 @@ interface ProposalDetail {
   user: {
     nama: string | null;
     npm: string | null;
-  } | null;
+  }[];
 }
 
 // ---------------- PAGE ----------------
 
-export default function DetailProposalKaprodi() {
+export default function AccProposalKaprodi() {
   const searchParams = useSearchParams();
   const proposalId = searchParams.get("id");
 
@@ -60,21 +57,13 @@ export default function DetailProposalKaprodi() {
       `)
       .eq("id", proposalId)
       .single();
+      
 
     if (error) {
       console.error("Fetch proposal error:", error);
-      alert("Gagal memuat data proposal");
-    } else if (data){
-      setProposal({
-        id: data.id,
-        judul: data.judul,
-        file_path: data.file_path,
-        status: data.status,
-        user: {
-          nama: data.user[0]?.nama,
-          npm: data.user[0]?.npm
-        }
-      });
+      // Jangan alert di sini agar UX tidak terganggu jika hanya refresh
+    } else {
+      setProposal(data);
     }
 
     setLoading(false);
@@ -95,12 +84,9 @@ export default function DetailProposalKaprodi() {
     try {
       setOpeningPdf(true);
 
-      /**
-       * ⚠️ GANTI "proposal-files" dengan nama bucket kamu
-       */
       const { data, error } = await supabase.storage
         .from("proposals")
-        .createSignedUrl(proposal.file_path, 60); // valid 60 detik
+        .createSignedUrl(proposal.file_path, 60);
 
       if (error) throw error;
 
@@ -110,9 +96,9 @@ export default function DetailProposalKaprodi() {
         alert("Gagal membuka file");
       }
 
-    } catch (err) {
+    } catch (err: any) {
       console.error("Open PDF error:", err);
-      alert("Tidak bisa membuka file (akses ditolak / file tidak ditemukan)");
+      alert(`Gagal membuka file: ${err.message}`);
     } finally {
       setOpeningPdf(false);
     }
@@ -128,20 +114,25 @@ export default function DetailProposalKaprodi() {
 
     setApproving(true);
 
-    const { error } = await supabase
-      .from("proposals")
-      .update({ status: "Diterima" })
-      .eq("id", proposal.id);
+    try {
+      // Update status menjadi 'Diterima'
+      const { error } = await supabase
+        .from("proposals")
+        .update({ status: "Diterima" })
+        .eq("id", proposal.id);
 
-    if (error) {
-      console.error("Approve error:", error);
-      alert("Gagal menyetujui proposal");
-    } else {
-      alert("Proposal berhasil disetujui ✅");
-      fetchProposal();
+      if (error) throw error;
+
+      alert("✅ Proposal berhasil disetujui!");
+      fetchProposal(); // Refresh data
+
+    } catch (err: any) {
+      console.error("Approve error:", err);
+      // Tampilkan pesan error detail dari database untuk debugging
+      alert(`Gagal menyetujui proposal: ${err.message || "Izin ditolak (RLS Policy)"}`);
+    } finally {
+      setApproving(false);
     }
-
-    setApproving(false);
   };
 
   if (loading) {
@@ -163,131 +154,109 @@ export default function DetailProposalKaprodi() {
   // ================= RENDER =================
 
   return (
-    <div className="flex min-h-screen bg-[#F8F9FB] font-sans text-slate-700">
-      <Sidebar />
+    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-[#F8F9FB] font-sans text-slate-700">
 
-      <div className="flex-1 flex flex-col h-screen overflow-y-auto">
+    
 
-        {/* HEADER */}
-        <header className="h-20 bg-white border-b border-gray-100 flex items-center justify-between px-8 sticky top-0 z-20 shrink-0">
-          <div className="relative w-96">
-            <Search
-              className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300"
-              size={20}
-            />
-            <input 
-              type="text" 
-              placeholder="Search" 
-              className="w-full pl-12 pr-4 py-2.5 bg-gray-50 border border-gray-100 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-100 transition-all"
-            />
-          </div>
+      {/* MAIN */}
+      <main className="flex-1 p-8">
 
-          <button className="relative p-2 hover:bg-gray-50 rounded-full transition-colors">
-            <Bell size={22} className="text-gray-400" />
-            <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
-          </button>
-        </header>
+        {/* BACK */}
+        <div className="flex items-center gap-4 mb-8">
+          <Link 
+            href="/dosen/aksesproposal" 
+            className="w-10 h-10 bg-white border border-gray-200 rounded-xl flex items-center justify-center text-gray-500 hover:text-blue-600 hover:border-blue-200 transition-all shadow-sm"
+          >
+            <ArrowLeft size={20} />
+          </Link>
 
-        {/* MAIN */}
-        <main className="flex-1 p-8">
+          <h1 className="text-xl font-bold text-gray-900">
+            Detail Proposal Mahasiswa
+          </h1>
+        </div>
 
-          {/* BACK */}
-          <div className="flex items-center gap-4 mb-8">
-            <Link 
-              href="/dosen/mahasiswabimbingan" 
-              className="w-10 h-10 bg-white border border-gray-200 rounded-xl flex items-center justify-center text-gray-500 hover:text-blue-600 hover:border-blue-200 transition-all shadow-sm"
-            >
-              <ArrowLeft size={20} />
-            </Link>
+        <div className="space-y-6">
 
-            <h1 className="text-xl font-bold text-gray-900">
-              Detail Proposal Mahasiswa
-            </h1>
-          </div>
-
-          <div className="space-y-6">
-
-            {/* Card Info */}
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-              <div className="p-8 flex items-center gap-5">
-                <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center border-4 border-white shadow-sm">
-                  <User size={40} className="text-gray-300" />
-                </div>
-                <div>
-                  <h2 className="text-xl font-bold text-gray-900">
-                    {proposal.user?.nama}
-                  </h2>
-                  <p className="text-gray-500 font-medium mt-1">
-                    {proposal.user?.npm}
-                  </p>
-                </div>
+          {/* Card Info */}
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="p-8 flex items-center gap-5">
+              <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center border-4 border-white shadow-sm">
+                <User size={40} className="text-gray-300" />
               </div>
-
-              <div className="px-8 py-6 bg-gray-50 border-t border-gray-100">
-                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
-                  Judul Proposal
-                </h3>
-                <p className="text-lg font-bold text-gray-800">
-                  {proposal.judul}
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">
+                  {proposal.user?.nama || "Tanpa Nama"}
+                </h2>
+                <p className="text-gray-500 font-medium mt-1">
+                  {proposal.user?.npm || "-"}
                 </p>
               </div>
             </div>
 
-            {/* File */}
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8">
-              <h3 className="text-lg font-bold text-gray-900 mb-4">
-                File Proposal Mahasiswa
+            <div className="px-8 py-6 bg-gray-50 border-t border-gray-100">
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
+                Judul Proposal
               </h3>
-
-              <div className="flex items-center justify-between p-4 border border-gray-200 rounded-xl">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-red-50 text-red-500 rounded-lg flex items-center justify-center border border-red-100">
-                    <FileText size={24} />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-gray-800">
-                      {proposal.file_path?.split("/").pop()}
-                    </p>
-                    <p className="text-xs text-gray-400 font-medium">
-                      PDF Document
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  onClick={handleOpenPdf}
-                  disabled={openingPdf}
-                  className="px-6 py-2.5 bg-[#345d8a] text-white text-xs font-bold rounded-lg hover:bg-[#2a4a6e] disabled:opacity-60"
-                >
-                  {openingPdf ? "Membuka..." : "Lihat PDF"}
-                </button>
-              </div>
+              <p className="text-lg font-bold text-gray-800 leading-relaxed">
+                {proposal.judul}
+              </p>
             </div>
+          </div>
 
-            {/* ACTION */}
-            <div>
+          {/* File */}
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">
+              File Proposal Mahasiswa
+            </h3>
+
+            <div className="flex items-center justify-between p-4 border border-gray-200 rounded-xl hover:border-blue-200 transition-colors bg-white">
+              <div className="flex items-center gap-4 overflow-hidden">
+                <div className="w-12 h-12 bg-red-50 text-red-500 rounded-lg flex items-center justify-center border border-red-100 shrink-0">
+                  <FileText size={24} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-gray-800 truncate pr-4">
+                    {proposal.file_path?.split("/").pop() || "Dokumen"}
+                  </p>
+                  <p className="text-xs text-gray-400 font-medium">
+                    PDF Document
+                  </p>
+                </div>
+              </div>
+
               <button
-                onClick={handleApprove}
-                disabled={approving || proposal.status === "Diterima"}
-                className={`px-8 py-3 rounded-lg font-bold text-sm shadow-sm transition
-                  ${
-                    proposal.status === "Diterima"
-                      ? "bg-gray-300 text-gray-600 cursor-not-allowed"
-                      : "bg-[#78aca0] hover:bg-[#639186] text-white"
-                  }
-                `}
+                onClick={handleOpenPdf}
+                disabled={openingPdf}
+                className="px-6 py-2.5 bg-[#345d8a] text-white text-xs font-bold rounded-lg hover:bg-[#2a4a6e] transition-colors disabled:opacity-60 whitespace-nowrap"
               >
-                {proposal.status === "Diterima"
-                  ? "Sudah Disetujui"
-                  : approving
-                  ? "Memproses..."
-                  : "Setujui Proposal"}
+                {openingPdf ? "Membuka..." : "Lihat PDF"}
               </button>
             </div>
-
           </div>
-        </main>
-      </div>
+
+          {/* ACTION */}
+          <div>
+            <button
+              onClick={handleApprove}
+              disabled={approving || proposal.status === "Diterima"}
+              className={`px-8 py-3 rounded-lg font-bold text-sm shadow-sm transition-all active:scale-95
+                ${
+                  proposal.status === "Diterima"
+                    ? "bg-gray-300 text-gray-600 cursor-not-allowed"
+                    : "bg-[#78aca0] hover:bg-[#639186] text-white"
+                }
+              `}
+            >
+              {proposal.status === "Diterima"
+                ? "Sudah Disetujui"
+                : approving
+                ? "Memproses..."
+                : "Setujui Proposal"}
+            </button>
+          </div>
+
+        </div>
+      </main>
     </div>
   );
 }

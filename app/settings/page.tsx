@@ -20,9 +20,13 @@ interface ProfileForm {
   phone: string;
   role: string;
 }
-const NEED_ML_64 = ["mahasiswa", "kaprodi", "tendik", "dosen"] as const;
+const NEED_ML_64 = ["mahasiswa", "kaprodi", "tendik", ] as const;
+
+
+
 
 export default function SettingsPage() {
+  
   const router = useRouter();
 
   const [form, setForm] = useState<ProfileForm>({
@@ -39,6 +43,8 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [savingPass, setSavingPass] = useState(false);
 
+  const isDosenSettings = form.role === "dosen";
+  
   useEffect(() => {
     const loadProfile = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -129,7 +135,13 @@ export default function SettingsPage() {
     <div className="flex min-h-screen bg-[#F4F7FE] font-sans text-slate-700">
       {renderSidebar()}
 
-      <main className={`flex-1 min-h-screen flex flex-col ${NEED_ML_64.includes(form.role as any) ? "ml-64" : ""}`}>
+     <main
+  className={`
+    flex-1 min-h-screen flex flex-col
+    ${!isDosenSettings ? "ml-64" : ""}
+  `}
+>
+
         
         {/* HEADER - Glassmorphism */}
        <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">

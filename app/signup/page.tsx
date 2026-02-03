@@ -6,10 +6,6 @@ import { useRouter } from 'next/navigation'
 
 export default function Signup() {
   const router = useRouter()
-
-  const [nama, setNama] = useState('')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
 
   // ======================
@@ -23,56 +19,11 @@ export default function Signup() {
   }
 
   // ======================
-  // EMAIL SIGNUP
-  // ======================
-  const handleSignup = async () => {
-  if (!nama || !email || !password) {
-    alert('Nama, email, dan password wajib diisi.')
-    return
-  }
-
-  try {
-    setLoading(true)
-
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-        data: {
-          nama,
-          role: 'mahasiswa',
-        },
-      },
-    })
-
-    if (error) {
-      alert(error.message)
-      return
-    }
-
-    // ⚠️ kondisi normal saat email confirmation aktif
-    alert(
-      'Pendaftaran berhasil.\nSilakan cek email untuk verifikasi.'
-    )
-
-    router.push('/login')
-  } catch (err) {
-    console.error(err)
-    alert('Terjadi kesalahan saat signup.')
-  } finally {
-    setLoading(false)
-  }
-}
-
-
-  // ======================
   // GOOGLE SIGNUP
   // ======================
   const handleGoogleSignup = async () => {
     try {
       setLoading(true)
-
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -82,11 +33,10 @@ export default function Signup() {
           },
         },
       })
-
       if (error) showError(error)
     } catch (err) {
       console.error(err)
-      alert('Gagal login dengan Google.')
+      alert('Gagal daftar dengan Google.')
     } finally {
       setLoading(false)
     }
@@ -95,93 +45,69 @@ export default function Signup() {
   return (
     <div className="min-h-screen grid grid-cols-1 lg:grid-cols-2 bg-white font-sans">
       
-      {/* SISI KIRI */}
-      <div className="relative bg-[#1a5fb4] text-white flex flex-col justify-between">
-        <div className="px-12 pt-20">
-          <h1 className="text-5xl font-bold mb-6">
-            Selamat Datang di <br /> SIMPRO
+      {/* SISI KIRI (BIRU) - Disamakan dengan Login */}
+      <div className="relative bg-[#0d64a8] text-white flex flex-col justify-between overflow-hidden">
+        
+        {/* Dekorasi Lengkung Putih */}
+        <div 
+          className="hidden lg:block absolute top-0 -right-1 h-full w-[15%] bg-white"
+          style={{ 
+            borderRadius: "100% 0 0 100% / 50%",
+            transform: "scaleY(1.05)"
+          }}
+        />
+
+        <div className="z-10 px-12 pt-24 text-center lg:text-left">
+          <h1 className="text-4xl md:text-5xl font-bold mb-6 tracking-tight">
+            Selamat Datang Di <br /> SIMPRO
           </h1>
-          <p className="max-w-md opacity-90">
-            Sistem Informasi Processing Sidang Skripsi
+
+          <p className="max-w-md text-[14px] leading-relaxed opacity-90 mx-auto lg:mx-0">
+            SIMPRO ( Sistem Informasi PROcessing Sidang ) adalah website sistem
+            informasi manajemen sidang skripsi yang dapat membantu mahasiswa,
+            ketua program prodi serta dosen untuk melakukan monitoring terhadap skripsi.
           </p>
         </div>
 
-        <div className="flex justify-center pb-10">
+        <div className="relative z-10 flex justify-center mt-auto">
           <img
-            src="/students.png"
+            src="/students.png" 
             alt="Students"
-            className="w-[80%] max-w-[420px]"
+            className="w-[85%] max-w-[480px] object-contain align-bottom"
           />
         </div>
       </div>
 
-      {/* SISI KANAN */}
-      <div className="flex items-center justify-center px-8 py-16">
+      {/* SISI KANAN (FORM DAFTAR) */}
+      <div className="flex items-center justify-center px-8 py-16 lg:px-20">
         <div className="w-full max-w-lg">
           
-          <h2 className="text-3xl font-semibold text-gray-800 mb-8">
-            Daftar Akun
-          </h2>
+          <h2 className="text-3xl font-medium text-gray-800 mb-8">Daftar Akun</h2>
 
-          {/* GOOGLE */}
+          {/* GOOGLE SIGNUP BUTTON - Styling disamakan dengan Login */}
           <button
             onClick={handleGoogleSignup}
             disabled={loading}
-            className="w-full border py-3 rounded-full flex justify-center gap-3 hover:bg-gray-50 mb-6 disabled:opacity-50"
+            className="w-full border border-gray-400 py-3 rounded-full flex items-center justify-center gap-3 hover:bg-gray-50 transition shadow-sm disabled:opacity-50"
           >
-            <img
-              src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
-              className="w-5"
+            <img 
+              src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" 
+              className="w-5" 
+              alt="Google" 
             />
-            Daftar dengan Google
+            <span className="text-gray-700 font-normal">
+              {loading ? 'Memproses...' : 'Daftar Dengan Google'}
+            </span>
           </button>
 
-          <div className="flex items-center my-6">
-            <div className="flex-1 h-px bg-gray-200" />
-            <span className="px-4 text-gray-400 text-sm">atau</span>
-            <div className="flex-1 h-px bg-gray-200" />
-          </div>
+          {/* LOGIN LINK */}
+          <p className="mt-8 text-sm font-normal text-gray-700">
+            Sudah punya akun?{" "}
+            <a href="/login" className="font-semibold hover:underline">
+              Masuk
+            </a>
+          </p>
 
-          {/* FORM */}
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm text-gray-600">Nama Lengkap</label>
-              <input
-                value={nama}
-                onChange={(e) => setNama(e.target.value)}
-                className="w-full border rounded-lg p-3 mt-1"
-                placeholder="Nama lengkap"
-              />
-            </div>
-
-            <div>
-              <label className="text-sm text-gray-600">Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full border rounded-lg p-3 mt-1"
-              />
-            </div>
-
-            <div>
-              <label className="text-sm text-gray-600">Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full border rounded-lg p-3 mt-1"
-              />
-            </div>
-          </div>
-
-          <button
-            onClick={handleSignup}
-            disabled={loading}
-            className="w-full bg-[#71a1cc] text-white py-4 rounded-xl mt-8 font-semibold disabled:opacity-50"
-          >
-            {loading ? 'Memproses...' : 'Sign Up'}
-          </button>
         </div>
       </div>
     </div>

@@ -37,8 +37,8 @@ export default function UnggahDokumenSeminar() {
   const adminDocs = [
     { id: 'pengajuan_sidang', label: "Formulir Pengajuan Sidang" },
     { id: 'bukti_bayar', label: "Bukti Pembayaran Registrasi" },
-    { id: 'bebas_pus_univ', label: "Bebas Pinjaman Perpustakaan Univ" },
-    { id: 'bebas_pus_fak', label: "Bebas Pinjaman Perpustakaan Fak" },
+    { id: 'bebas_pus_univ', label: "Bebas Pinjaman Perpustakaan Universitas" },
+    { id: 'bebas_pus_fak', label: "Bebas Pinjaman Perpustakaan Fakultas" },
     { id: 'bukti_pengajuan_judul', label: "Bukti pengajuan Topik/Judul" },
     { id: 'skpi', label: "SKPI" },
     { id: 'biodata_sidang', label: "Biodata Sidang" },

@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import Sidebar from "@/components/sidebar-dosen";
 import { 
   Search, 
   Bell, 
@@ -12,7 +11,6 @@ import {
   Info,
   Clock
 } from "lucide-react";
-import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -55,7 +53,7 @@ export default function DetailProposalMahasiswa() {
           judul,
           file_path,
           status,
-          user:profiles!proposals_mahasiswa_id_fkey (
+          user:profiles (
             nama,
             npm
           )
@@ -71,7 +69,7 @@ export default function DetailProposalMahasiswa() {
         judul: data.judul,
         file_path: data.file_path,
         status: data.status,
-        user: data.user[0] ?? null // 🔑 KUNCI UTAMA
+        user: data.user ?? null // 🔑 KUNCI UTAMA
       });
     }
 
@@ -99,7 +97,7 @@ export default function DetailProposalMahasiswa() {
       setOpeningPdf(true);
 
       const { data, error } = await supabase.storage
-        .from("proposal_files") 
+        .from("proposals") 
         .createSignedUrl(proposal.file_path, 3600); 
 
       if (error) throw error;
@@ -140,24 +138,23 @@ export default function DetailProposalMahasiswa() {
 
   return (
     <div className="flex min-h-screen bg-[#F8F9FB] font-sans text-slate-700">
-      <Sidebar />
+   
 
       <div className="flex-1 flex flex-col h-screen overflow-y-auto">
 
         {/* HEADER */}
-        <header className="h-20 bg-white border-b border-gray-100 flex items-center justify-between px-8 sticky top-0 z-20 shrink-0">
-          <div className="relative w-96">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300" size={20} />
-            <input 
-              type="text" 
-              placeholder="Search" 
-              className="w-full pl-12 pr-4 py-2.5 bg-gray-50 border border-gray-100 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-100 transition-all"
-            />
+        <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
+          <div className="flex items-center gap-6">
+            <div className="relative w-72 group">
+            </div>
           </div>
-          <button className="relative p-2 hover:bg-gray-50 rounded-full transition-colors">
-            <Bell size={22} className="text-gray-400" />
-            <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
-          </button>
+
+          <div className="flex items-center gap-6">
+            {/* Minimalist SIMPRO Text */}
+            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
+              Simpro
+            </span>
+          </div>
         </header>
 
         {/* MAIN */}

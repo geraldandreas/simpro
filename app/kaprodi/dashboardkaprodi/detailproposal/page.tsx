@@ -140,19 +140,19 @@ export default function DetailProposalKaprodi() {
     <div className="min-h-screen bg-[#F4F7FE] flex flex-col font-sans text-slate-700">
       
       {/* HEADER - Glassmorphism Effect */}
-      <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20">
-        <div className="relative w-96 group">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={18} />
-          <input type="text" placeholder="Cari dokumen..." className="w-full pl-12 pr-4 py-2.5 bg-slate-100 border-transparent border focus:bg-white focus:border-blue-400 rounded-xl text-sm outline-none transition-all shadow-inner" />
-        </div>
-        <div className="flex items-center gap-4">
-          <button className="p-2.5 text-slate-400 hover:bg-slate-100 rounded-xl transition-all relative">
-            <Bell size={22} />
-            <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
-          </button>
-          <div className="h-10 w-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold shadow-lg shadow-blue-200 ml-2 uppercase">K</div>
-        </div>
-      </header>
+      <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
+          <div className="flex items-center gap-6">
+            <div className="relative w-72 group">
+            </div>
+          </div>
+
+          <div className="flex items-center gap-6">
+            {/* Minimalist SIMPRO Text */}
+            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
+              Simpro
+            </span>
+          </div>
+        </header>
 
       <main className="flex-1 p-10 max-w-[1400px] mx-auto w-full">
         

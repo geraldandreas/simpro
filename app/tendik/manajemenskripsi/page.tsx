@@ -129,12 +129,6 @@ export default function ManajemenSkripsiTendikPage() {
         <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
                           <div className="flex items-center gap-6">
                             <div className="relative w-72 group">
-                              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" size={16} />
-                              <input 
-                                type="text" 
-                                placeholder="Cari data..." 
-                                className="w-full pl-10 pr-4 py-2 bg-slate-100 border-transparent border focus:bg-white focus:border-blue-400 rounded-xl text-xs outline-none transition-all shadow-inner uppercase tracking-widest"
-                              />
                             </div>
                           </div>
                 

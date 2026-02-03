@@ -29,7 +29,101 @@ export default function DashboardKaprodi() {
   const [loading, setLoading] = React.useState(true);
   const [students, setStudents] = useState<MahasiswaBimbingan[]>([]);
   const [dosenId, setDosenId] = useState<string | null>(null);
+  const [totalSeminarSiap, setTotalSeminarSiap] = useState(0);
+ const [dosenName, setDosenName] = useState<string>("");
+
+  useEffect(() => {
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // 🔑 AMBIL NAMA (SAMA PERSIS DENGAN DOSEN)
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("nama")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      setDosenName(profile?.nama ?? "Kaprodi");
+
+      // lanjut logic lain (stats, proposal, seminar, mahasiswa)
+      await fetchStats(user.id);
+      await fetchProposalPending();
+      await fetchSeminarSiap();
+      await fetchMahasiswaBimbingan();
+
+    } catch (err) {
+      console.error("Dashboard kaprodi error:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  fetchData();
+}, []);
+
+
+
   
+const [totalProposalPending, setTotalProposalPending] = useState(0);
+const fetchSeminarSiap = async () => {
+  try {
+    const { data, error } = await supabase
+      .from("seminar_requests")
+      .select(`
+        id,
+        status,
+        seminar_schedules ( id )
+      `)
+      .in("status", ["Disetujui", "Menunggu Penjadwalan"]);
+
+    if (error) throw error;
+
+    const siap = (data || []).filter(
+      (s: any) =>
+        !s.seminar_schedules || s.seminar_schedules.length === 0
+    );
+
+    setTotalSeminarSiap(siap.length);
+  } catch (err) {
+    console.error("❌ Gagal hitung seminar siap dijadwalkan:", err);
+  }
+};
+
+useEffect(() => {
+  fetchStats();
+  fetchProposalPending();
+  fetchSeminarSiap();
+}, []);
+
+
+const fetchProposalPending = async () => {
+  try {
+    const { data, error } = await supabase
+      .from("proposals")
+      .select(`
+        id,
+        thesis_supervisors ( id )
+      `);
+
+    if (error) throw error;
+
+    const pending = (data || []).filter(
+      (p: any) => !p.thesis_supervisors || p.thesis_supervisors.length === 0
+    );
+
+    setTotalProposalPending(pending.length);
+  } catch (err) {
+    console.error("❌ Gagal hitung proposal pending:", err);
+  }
+};
+useEffect(() => {
+  fetchStats();
+  fetchProposalPending();
+}, []);
 
 
   const fetchMahasiswaBimbingan = async () => {
@@ -124,12 +218,14 @@ export default function DashboardKaprodi() {
 
       <main className="p-10 max-w-[1400px] w-full mx-auto">
         <div className="mb-10">
-          <h1 className="text-3xl font-black text-slate-800 tracking-tight">Selamat Datang, Dr. Akmal, S.Si</h1>
+          <h1 className="text-3xl font-black text-slate-800 tracking-tight"> Selamat Datang, {dosenName || "Dosen Pembimbing"}
+          </h1>
+
           <p className="text-slate-500 font-medium mt-1">Pantau perkembangan akademik dan bimbingan mahasiswa Anda hari ini.</p>
         </div>
 
         {/* STATS CARDS - Improved with Icons & Depth */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-10">
+       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-10 justify-items-center">
           <StatCard 
             count={loading ? "..." : totalBimbingan.toString()} 
             label="Mahasiswa" 
@@ -137,9 +233,23 @@ export default function DashboardKaprodi() {
             icon={<Users size={20} />} 
             color="blue" 
           />
-          <StatCard count="4" label="Proposal" subLabel="Menunggu Review" icon={<FileCheck size={20} />} color="amber" />
-          <StatCard count="1" label="Seminar" subLabel="Siap Dijadwalkkan" icon={<Clock size={20} />} color="indigo" />
-          <StatCard count="10" label="Skripsi" subLabel="Dalam Pengerjaan" icon={<GraduationCap size={20} />} color="emerald" />
+          <StatCard
+  count={loading ? "..." : totalProposalPending.toString()}
+  label="Proposal"
+  subLabel="Menunggu Review"
+  icon={<FileCheck size={20} />}
+  color="amber"
+/>
+
+          <StatCard
+  count={loading ? "..." : totalSeminarSiap.toString()}
+  label="Seminar"
+  subLabel="Siap Dijadwalkkan"
+  icon={<Clock size={20} />}
+  color="indigo"
+/>
+
+          
         </div>
 
         {/* TABLE SECTION - Improved Spacing & Design */}
@@ -234,16 +344,33 @@ function StatCard({ count, label, subLabel, icon, color }: any) {
   };
 
   return (
-    <div className="bg-white p-8 rounded-[2rem] border border-white shadow-lg shadow-slate-200/50 flex flex-col items-center text-center hover:translate-y-[-4px] transition-all duration-300 group">
-      <div className={`p-4 rounded-2xl mb-6 border ${colors[color]} group-hover:scale-110 transition-transform duration-300`}>
+    <div className="bg-white p-8 rounded-[2rem] border border-white shadow-lg shadow-slate-200/50 
+                    flex flex-col items-center justify-center text-center 
+                    hover:-translate-y-1 transition-all duration-300">
+      
+      {/* ICON */}
+      <div className={`p-4 rounded-2xl mb-6 border ${colors[color]}`}>
         {icon}
       </div>
-      <span className="text-4xl font-black text-slate-800 tracking-tighter mb-1">{count}</span>
-      <p className="text-sm font-bold text-slate-800 uppercase tracking-tight">{label}</p>
-      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">● {subLabel}</p>
+
+      {/* COUNT */}
+      <span className="text-4xl font-black text-slate-800 tracking-tighter">
+        {count}
+      </span>
+
+      {/* LABEL */}
+      <p className="text-sm font-bold text-slate-800 uppercase mt-1">
+        {label}
+      </p>
+
+      {/* SUBLABEL */}
+      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">
+        ● {subLabel}
+      </p>
     </div>
   );
 }
+
 
 function TableRow({ name, npm, status, lecturer2, statusColor }: any) {
   return (
