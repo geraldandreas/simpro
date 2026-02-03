@@ -22,7 +22,7 @@ interface ProposalDetail {
   user: {
     nama: string | null;
     npm: string | null;
-  }[];
+  } | null;
 }
 
 // ---------------- PAGE ----------------
@@ -57,17 +57,21 @@ export default function AccProposalKaprodi() {
         )
       `)
       .eq("id", proposalId)
-      .single();
+      .single()
+      .returns<ProposalDetail>();
       
 
     if (error) {
       console.error("Fetch proposal error:", error);
       // Jangan alert di sini agar UX tidak terganggu jika hanya refresh
     } else {
+      if (!data) return; // 🔑 INI YANG KURANG
   console.log("RAW PROPOSAL DATA:", data);
   console.log("USER FIELD:", data.user);
   console.log("IS ARRAY?", Array.isArray(data.user));
+
   setProposal(data);
+
 }
 
     
@@ -156,7 +160,8 @@ export default function AccProposalKaprodi() {
       </div>
     );
   }
-const user = proposal.user?.[0];
+const user = proposal.user;
+
   // ================= RENDER =================
 
   return (

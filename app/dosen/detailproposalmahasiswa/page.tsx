@@ -21,11 +21,12 @@ interface ProposalDetail {
   judul: string;
   file_path: string | null;
   status: string;
-  user: {
+   user: {
     nama: string | null;
     npm: string | null;
   } | null;
 }
+
 
 // ---------------- PAGE ----------------
 
@@ -59,28 +60,20 @@ export default function DetailProposalMahasiswa() {
           )
         `)
         .eq("id", proposalId)
-        .single();
+        .single()
+        .returns<ProposalDetail>();
 
       if (error) throw error;
-      
-      if (data) {
-      setProposal({
-        id: data.id,
-        judul: data.judul,
-        file_path: data.file_path,
-        status: data.status,
-        user: data.user ?? null // 🔑 KUNCI UTAMA
-      });
-    }
+      if (!data) return;
 
-    } catch (error: any) {
-      console.error("Fetch proposal error:", error.message);
-      alert("Gagal memuat data proposal");
-    } finally {
-      setLoading(false);
-    }
-  };
-
+    setProposal(data); // 🔥 SELESAI
+  } catch (error: any) {
+    console.error("Fetch proposal error:", error.message);
+    alert("Gagal memuat data proposal");
+  } finally {
+    setLoading(false);
+  }
+};
   useEffect(() => {
     fetchProposal();
   }, [proposalId]);
@@ -133,6 +126,10 @@ export default function DetailProposalMahasiswa() {
       </div>
     );
   }
+  const user = proposal.user ? proposal.user : null;
+
+
+
 
   const isAccepted = proposal.status === "Diterima";
 
@@ -183,7 +180,7 @@ export default function DetailProposalMahasiswa() {
                 </div>
                 <div>
                   <h2 className="text-xl font-bold text-gray-900">
-                    {proposal.user?.nama || "Tanpa Nama"}
+                       {proposal.user?.nama ?? "Tanpa Nama"}
                   </h2>
                   <p className="text-gray-500 font-medium mt-1">
                     {proposal.user?.npm || "-"}

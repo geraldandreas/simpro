@@ -7,8 +7,10 @@ import {
   ShieldCheck, Clock, Layers, LayoutDashboard
 } from "lucide-react";
 import { useSearchParams, useRouter } from "next/navigation";
+import { mapStatusToUI } from
+  "@/app/kaprodi/dashboardkaprodi/mahasiswabimbingan/page";
 import { supabase } from "@/lib/supabaseClient";
-import SidebarTendik from "@/components/sidebar-tendik"; 
+ 
 
 // ================= TYPES =================
 
@@ -76,28 +78,55 @@ export default function DetailProgresTendikPage() {
   const fetchData = async () => {
     if (!proposalId) return;
     try {
-      const { data: propData, error: propError } = await supabase
-        .from("proposals")
-        .select(`
-          id, judul,
-          profiles!proposals_user_id_fkey (nama, npm), 
-          seminar_requests ( tipe, status )
-        `)
-        .eq("id", proposalId)
-        .single();
+        const { data: propData, error: propError } = await supabase
+  .from("proposals")
+  .select(`
+    id,
+    judul,
+    status,
+    user:profiles!proposals_user_id_fkey (
+      nama,
+      npm
+    ),
+    seminar_requests (
+      tipe,
+      status
+    )
+  `)
+  .eq("id", proposalId)
+  .single();
 
-      if (propError) throw propError;
-      const profile = Array.isArray(propData.profiles) ? propData.profiles[0] : propData.profiles;
-      setStudent({
-        id: propData.id,
-        judul: propData.judul,
-        user: { nama: profile?.nama || "Tanpa Nama", npm: profile?.npm || "-" }
-      });
+if (propError) throw propError;
+if (!propData) throw new Error("Proposal tidak ditemukan");
 
-      const seminar = propData.seminar_requests?.find((r: any) => r.tipe === 'seminar');
-      if (seminar?.status === 'Lengkap') setTahap("Kesiapan Seminar");
-      else if (seminar?.status === 'Menunggu Verifikasi') setTahap("Verifikasi Berkas");
-      else setTahap("Proses Bimbingan");
+      const user =
+  Array.isArray(propData.user)
+    ? propData.user[0]
+    : propData.user;
+
+setStudent({
+  id: propData.id,
+  judul: propData.judul,
+  user: {
+    nama: user?.nama ?? "Tanpa Nama",
+    npm: user?.npm ?? "-",
+  },
+});
+
+
+      const hasSeminar =
+  propData.seminar_requests?.some(
+    (r: any) => r.tipe === "seminar" && r.status !== "Ditolak"
+  ) ?? false;
+
+
+const ui = mapStatusToUI({
+  proposalStatus: propData.status,
+  hasSeminar,
+});
+
+setTahap(ui.label);
+
 
       const { data: docData } = await supabase.from("seminar_documents").select("*").eq("proposal_id", proposalId);
       setDocuments(docData || []);
@@ -145,9 +174,8 @@ export default function DetailProgresTendikPage() {
 
   return (
     <div className="flex h-screen bg-[#F4F7FE] font-sans text-slate-700 overflow-hidden uppercase tracking-tighter">
-      <SidebarTendik />
 
-      <div className="flex-1 ml-64 flex flex-col h-full">
+      <div className="flex-1 flex flex-col h-full">
         {/* HEADER */}
        <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
                          <div className="flex items-center gap-6">

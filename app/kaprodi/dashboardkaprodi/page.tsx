@@ -28,42 +28,8 @@ export default function DashboardKaprodi() {
   const [totalBimbingan, setTotalBimbingan] = React.useState<number>(0);
   const [loading, setLoading] = React.useState(true);
   const [students, setStudents] = useState<MahasiswaBimbingan[]>([]);
-  const [dosenId, setDosenId] = useState<string | null>(null);
   const [totalSeminarSiap, setTotalSeminarSiap] = useState(0);
  const [dosenName, setDosenName] = useState<string>("");
-
-  useEffect(() => {
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      // 🔑 AMBIL NAMA (SAMA PERSIS DENGAN DOSEN)
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("nama")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      setDosenName(profile?.nama ?? "Kaprodi");
-
-      // lanjut logic lain (stats, proposal, seminar, mahasiswa)
-      await fetchStats(user.id);
-      await fetchProposalPending();
-      await fetchSeminarSiap();
-      await fetchMahasiswaBimbingan();
-
-    } catch (err) {
-      console.error("Dashboard kaprodi error:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  fetchData();
-}, []);
 
 
 
@@ -93,11 +59,7 @@ const fetchSeminarSiap = async () => {
   }
 };
 
-useEffect(() => {
-  fetchStats();
-  fetchProposalPending();
-  fetchSeminarSiap();
-}, []);
+
 
 
 const fetchProposalPending = async () => {
@@ -120,82 +82,99 @@ const fetchProposalPending = async () => {
     console.error("❌ Gagal hitung proposal pending:", err);
   }
 };
+
+
+
+  const fetchMahasiswaBimbingan = async (uid: string) => {
+  try {
+    const { data, error } = await supabase
+      .from("thesis_supervisors")
+      .select(`
+        proposal:proposals (
+          id, status,
+          mahasiswa:profiles ( nama, npm ),
+          seminar:seminar_requests ( id )
+        )
+      `)
+      .eq("dosen_id", uid);
+
+    if (error) throw error;
+
+    const mapped: MahasiswaBimbingan[] = (data || []).map((row: any) => {
+      const proposal = row.proposal;
+      const hasSeminar = (proposal?.seminar?.length ?? 0) > 0;
+      const ui = mapStatusToUI({
+        proposalStatus: proposal.status,
+        hasSeminar
+      });
+
+      return {
+        proposal_id: proposal.id,
+        nama: proposal.mahasiswa.nama,
+        npm: proposal.mahasiswa.npm,
+        uiStatusLabel: ui.label,
+        uiStatusColor: ui.color,
+      };
+    });
+
+    setStudents(mapped);
+  } catch (err) {
+    console.error("❌ Gagal load mahasiswa bimbingan:", err);
+  }
+};
+
+ 
+
+  const fetchStats = async (uid: string) => {
+  try {
+    const { count, error } = await supabase
+      .from("thesis_supervisors")
+      .select("*", { count: "exact", head: true })
+      .eq("dosen_id", uid);
+
+    if (error) throw error;
+    setTotalBimbingan(count || 0);
+  } catch (err) {
+    console.error("Error fetching stats:", err);
+  }
+};
+
+
 useEffect(() => {
-  fetchStats();
-  fetchProposalPending();
+  const init = async () => {
+    try {
+      setLoading(true);
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // ambil nama kaprodi
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("nama")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      setDosenName(profile?.nama ?? "Kaprodi");
+
+     await Promise.all([
+  fetchStats(user.id),
+  fetchProposalPending(),
+  fetchSeminarSiap(),
+  fetchMahasiswaBimbingan(user.id), 
+]);
+
+
+    } catch (err) {
+      console.error("Dashboard kaprodi error:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  init();
 }, []);
 
-
-  const fetchMahasiswaBimbingan = async () => {
-    try {
-      setLoading(true);
-      const { data: session } = await supabase.auth.getSession();
-      const uid = session?.session?.user?.id;
-      if (!uid) return;
-      setDosenId(uid);
-
-      const { data, error } = await supabase
-        .from("thesis_supervisors")
-        .select(`
-          proposal:proposals (
-            id, status,
-            mahasiswa:profiles ( nama, npm ),
-            seminar:seminar_requests ( id )
-          )
-        `)
-        .eq("dosen_id", uid);
-
-      if (error) throw error;
-
-      const mapped: MahasiswaBimbingan[] = (data || []).map((row: any) => {
-        const proposal = row.proposal;
-        const hasSeminar = (proposal?.seminar?.length ?? 0) > 0;
-        const ui = mapStatusToUI({ proposalStatus: proposal.status, hasSeminar });
-
-        return {
-          proposal_id: proposal.id,
-          nama: proposal.mahasiswa.nama,
-          npm: proposal.mahasiswa.npm,
-          uiStatusLabel: ui.label,
-          uiStatusColor: ui.color,
-        };
-      });
-      setStudents(mapped);
-    } catch (err) {
-      console.error("❌ Gagal load mahasiswa bimbingan:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { fetchMahasiswaBimbingan(); }, []);
-
-  const fetchStats = async () => {
-    try {
-      setLoading(true);
-      const { data: { session } } = await supabase.auth.getSession();
-      const uid = session?.user?.id;
-      if (!uid) return;
-
-      // Mengambil jumlah baris saja (lebih cepat daripada mengambil semua data)
-      const { count, error } = await supabase
-        .from("thesis_supervisors")
-        .select('*', { count: 'exact', head: true })
-        .eq("dosen_id", uid);
-
-      if (error) throw error;
-      setTotalBimbingan(count || 0);
-
-    } catch (err) {
-      console.error("Error fetching stats:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  React.useEffect(() => {
-    fetchStats();
-  }, []);
 
   // ... rest of your return code
   return (
@@ -244,7 +223,7 @@ useEffect(() => {
           <StatCard
   count={loading ? "..." : totalSeminarSiap.toString()}
   label="Seminar"
-  subLabel="Siap Dijadwalkkan"
+  subLabel="Siap Dijadwalkan"
   icon={<Clock size={20} />}
   color="indigo"
 />
@@ -293,7 +272,7 @@ useEffect(() => {
                         <td className="px-8 py-8">
                           <div className="flex items-center gap-4">
                             <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-black group-hover:bg-blue-600 group-hover:text-white transition-all">
-                              {mhs.nama.charAt(0)}
+                              {mhs.nama?.charAt(0) ?? "?"}
                             </div>
                             <div>
                               <p className="text-sm font-black text-slate-800 leading-none">{mhs.nama}</p>

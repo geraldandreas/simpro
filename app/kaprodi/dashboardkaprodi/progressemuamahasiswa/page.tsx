@@ -1,6 +1,9 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { mapStatusToUI } from 
+  "@/app/kaprodi/dashboardkaprodi/mahasiswabimbingan/page";
+
 import {
   Search,
   Bell,
@@ -62,32 +65,26 @@ export default function ProgresSemuaMahasiswaKaprodiPage() {
       if (error) throw error;
 
       const mapped: StudentProgress[] = (proposals || []).map((p: any) => {
-        let timelineStatus = "Pengajuan Proposal";
-        if (p.thesis_supervisors?.length > 0) timelineStatus = "Proses Bimbingan";
-        
+  const hasSeminar =
+    p.seminar_requests?.some(
+      (s: any) => s.tipe === "seminar"
+    ) ?? false;
 
-        const seminar = p.seminar_requests?.find((s: any) => s.tipe === "seminar");
-        const sidang = p.seminar_requests?.find((s: any) => s.tipe === "sidang");
+  const ui = mapStatusToUI({
+    proposalStatus: p.status,
+    hasSeminar,
+  });
 
-        if (seminar) {
-          if (seminar.status === "draft") timelineStatus = "Proses Kesiapan Seminar";
-          if (seminar.status === "Lengkap") timelineStatus = "Seminar Proposal";
-          if (seminar.status === "Ditolak") timelineStatus = "Perbaikan Pasca Seminar";
-        }
-        if (sidang) {
-          if (sidang.status === "draft") timelineStatus = "Proses Kesiapan Sidang";
-          if (sidang.status === "Lengkap") timelineStatus = "Sidang Skripsi";
-        }
+  return {
+    id: p.id,
+    nama: p.profiles?.nama ?? "-",
+    npm: p.profiles?.npm ?? "-",
+    judul: p.judul,
+    status: ui.label,          // 🔥 INI KUNCINYA
+    pembimbing: p.thesis_supervisors?.[0]?.profiles?.nama ?? "-",
+  };
+});
 
-        return {
-          id: p.id,
-          nama: p.profiles?.nama ?? "-",
-          npm: p.profiles?.npm ?? "-",
-          judul: p.judul,
-          status: timelineStatus,
-          pembimbing: p.thesis_supervisors?.[0]?.profiles?.nama ?? "-",
-        };
-      });
       setData(mapped);
     } catch (err) {
       console.error("❌ Gagal fetch progres:", err);
