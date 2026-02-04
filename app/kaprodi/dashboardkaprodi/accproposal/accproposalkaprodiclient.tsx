@@ -1,4 +1,6 @@
 "use client";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 import React, { useEffect, useState } from "react";
 import { 
@@ -22,10 +24,8 @@ interface ProposalDetail {
   user: {
     nama: string | null;
     npm: string | null;
-  }[];
+  } | null;
 }
-
-// ---------------- PAGE ----------------
 
 export default function AccProposalKaprodiClient() {
   const searchParams = useSearchParams();
@@ -39,7 +39,8 @@ export default function AccProposalKaprodiClient() {
   // ================= FETCH DETAIL =================
 
   const fetchProposal = async () => {
-    if (!proposalId) return;
+    if (!proposalId) 
+      return;
 
     setLoading(true);
 
@@ -56,15 +57,24 @@ export default function AccProposalKaprodiClient() {
         )
       `)
       .eq("id", proposalId)
-      .single();
+      .single()
+      .returns<ProposalDetail>();
       
 
     if (error) {
       console.error("Fetch proposal error:", error);
       // Jangan alert di sini agar UX tidak terganggu jika hanya refresh
     } else {
-      setProposal(data);
-    }
+      if (!data) return; // 🔑 INI YANG KURANG
+  console.log("RAW PROPOSAL DATA:", data);
+  console.log("USER FIELD:", data.user);
+  console.log("IS ARRAY?", Array.isArray(data.user));
+
+  setProposal(data);
+
+}
+
+    
 
     setLoading(false);
   };
@@ -150,26 +160,14 @@ export default function AccProposalKaprodiClient() {
       </div>
     );
   }
+const user = proposal.user;
 
   // ================= RENDER =================
 
   return (
     <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-[#F8F9FB] font-sans text-slate-700">
 
-      {/* HEADER - Glassmorphism */}
-              <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
-                <div className="flex items-center gap-6">
-                  <div className="relative w-72 group">
-                  </div>
-                </div>
-      
-                <div className="flex items-center gap-6">
-                  {/* Minimalist SIMPRO Text */}
-                  <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
-                    Simpro
-                  </span>
-                </div>
-              </header>
+    
 
       {/* MAIN */}
       <main className="flex-1 p-8">
@@ -198,10 +196,10 @@ export default function AccProposalKaprodiClient() {
               </div>
               <div>
                 <h2 className="text-xl font-bold text-gray-900">
-                  {proposal.user[0]?.nama || "Tanpa Nama"}
+                  {user?.nama ?? "Tanpa Nama"}
                 </h2>
                 <p className="text-gray-500 font-medium mt-1">
-                  {proposal.user[0]?.npm || "-"}
+                  {user?.npm ?? "-"}
                 </p>
               </div>
             </div>

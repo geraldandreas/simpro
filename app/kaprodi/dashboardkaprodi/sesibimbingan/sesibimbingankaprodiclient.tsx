@@ -231,21 +231,24 @@ setExistingFileUrl(latestFeedback?.file_url ?? null);
   setSaving(true);
 
   try {
-    let fileUrl: string | null = null;
+    let fileUrl: string | null = existingFileUrl ?? null;
+
 
 
     // 1️⃣ Upload file balasan (jika ada)
-    if (fileBalasan) {
-      const filePath = `${sessionId}/${Date.now()}_${fileBalasan.name}`;
+    // 1️⃣ Upload file baru (jika ada)
+if (fileBalasan) {
+  const filePath = `${sessionId}/${Date.now()}_${fileBalasan.name}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from("feedback_draft")
-        .upload(filePath, fileBalasan);
+  const { error: uploadError } = await supabase.storage
+    .from("feedback_draft")
+    .upload(filePath, fileBalasan);
 
-      if (uploadError) throw uploadError;
+  if (uploadError) throw uploadError;
 
-      fileUrl = `feedback_draft/${filePath}`;
-    }
+  fileUrl = `feedback_draft/${filePath}`;
+}
+
 
     if (feedbackId) {
   // UPDATE (edit feedback lama)
@@ -255,6 +258,7 @@ setExistingFileUrl(latestFeedback?.file_url ?? null);
       komentar,
       file_url: fileUrl,
       status_revisi: statusRevisi,
+      ...(fileUrl ? { file_url: fileUrl } : {}) 
     })
     .eq("id", feedbackId);
 } else {

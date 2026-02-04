@@ -33,6 +33,25 @@ export default function DetailBimbinganMahasiswaClient() {
   const [catatanInput, setCatatanInput] = useState("");
   const [sending, setSending] = useState(false);
   const [feedbacks, setFeedbacks] = useState<any[]>([]);
+  const handleDownloadDraft = async (fileUrl: string) => {
+  try {
+    const path = fileUrl.split("draftsession/")[1];
+
+    if (!path) throw new Error("Path invalid");
+
+    const { data, error } = await supabase.storage
+      .from("draftsession")
+      .createSignedUrl(path, 3600);
+
+    if (error) throw error;
+
+    window.open(data.signedUrl, "_blank");
+  } catch (err) {
+    console.error(err);
+    alert("Gagal membuka draft");
+  }
+};
+
 
   useEffect(() => {
     if (!sessionId) return;
@@ -173,7 +192,8 @@ export default function DetailBimbinganMahasiswaClient() {
   const pembimbing1 = supervisors.find((s: any) => s.role === "utama")?.dosen?.nama || "-";
   const pembimbing2 = supervisors.find((s: any) => s.role === "pendamping")?.dosen?.nama || "-";
   if (!sessionId) return <div className="flex h-screen items-center justify-center text-gray-400">Sesi tidak ditemukan.</div>;
-  const feedback= feedbacks?.[0] ?? null;
+   const feedbackWithFile =
+  feedbacks.find(fb => !!fb.file_url) ?? null;
 
   return (
     <div className="flex min-h-screen bg-[#F4F7FE] font-sans text-slate-700">
@@ -303,16 +323,28 @@ export default function DetailBimbinganMahasiswaClient() {
                           </p>
                         </div>
                       </div>
-                      <div className="flex gap-2">
-                        {!isLocked && (
-                          <button onClick={async () => {
-                            if(!confirm("Hapus file ini?")) return;
-                            await supabase.from("session_drafts").delete().eq("id", draft.id);
-                            window.location.reload();
-                          }} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={20} /></button>
-                        )}
-                        <a href={draft.file_url} target="_blank" className="p-2 text-slate-300 hover:text-blue-600 transition-colors"><ExternalLink size={20} /></a>
-                      </div>
+                     <div className="flex gap-2">
+  {!isLocked && (
+    <button
+      onClick={async () => {
+        if(!confirm("Hapus file ini?")) return;
+        await supabase.from("session_drafts").delete().eq("id", draft.id);
+        window.location.reload();
+      }}
+      className="p-2 text-slate-300 hover:text-red-500 transition-colors"
+    >
+      <Trash2 size={20} />
+    </button>
+  )}
+
+  <button
+    onClick={() => handleDownloadDraft(draft.file_url)}
+    className="p-2 text-slate-300 hover:text-blue-600 transition-colors"
+  >
+    <ExternalLink size={20} />
+  </button>
+</div>
+
                     </div>
                   ))}
 
@@ -404,9 +436,9 @@ export default function DetailBimbinganMahasiswaClient() {
            <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
             <h3 className="text-lg font-bold text-gray-900 mb-4">Feedback Dosen</h3>
   
-            {feedback?.file_url ? (
-              <button
-                onClick={() => handleDownloadFeedback(feedback.file_url)}
+           {feedbackWithFile ? (
+  <button
+    onClick={() => handleDownloadFeedback(feedbackWithFile.file_url)}
                 className="w-full flex items-center justify-between bg-white border border-gray-200 p-4 rounded-xl mb-6 shadow-sm hover:border-blue-300 hover:bg-blue-50/30 transition-all duration-200 group text-left overflow-hidden"
               >
                 <div className="flex items-center gap-4 flex-1 min-w-0">
@@ -417,7 +449,7 @@ export default function DetailBimbinganMahasiswaClient() {
                   
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-bold text-gray-800 truncate group-hover:text-blue-900">
-                      {decodeURIComponent(feedback.file_url.split("/").pop()?.split("_").slice(1).join("_") || "File Pelengkap")}
+                      {decodeURIComponent(feedbackWithFile.file_url.split("/").pop()?.split("_").slice(1).join("_") || "File Pelengkap")}
                     </p>
                     <p className="text-xs text-gray-400 mt-1 flex items-center gap-1 font-medium group-hover:text-blue-500">
                       Klik untuk mengunduh dokumen
@@ -434,7 +466,7 @@ export default function DetailBimbinganMahasiswaClient() {
               <div className="flex flex-col items-center justify-center p-8 bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl mb-6 text-gray-400">
                 <AlertCircle size={24} className="mb-2 opacity-50" />
                 <p className="text-sm font-medium">
-                  Mahasiswa belum mengunggah dokumen draft.
+                  Dosen belum mengunggah dokumen perbaikan.
                 </p>
               </div>
               )}

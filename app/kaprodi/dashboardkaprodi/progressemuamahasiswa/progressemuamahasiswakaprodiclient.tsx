@@ -48,6 +48,8 @@ export default function ProgresSemuaMahasiswaKaprodiClient() {
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState("Semua Status"); 
   const [searchTerm, setSearchTerm] = useState("");
+  
+  
 
   // ================= FETCH DATA (Backend Logic Tetap) =================
   const fetchData = async () => {
@@ -63,6 +65,8 @@ export default function ProgresSemuaMahasiswaKaprodiClient() {
         `);
 
       if (error) throw error;
+      
+      
 
       const mapped: StudentProgress[] = (proposals || []).map((p: any) => {
   const hasSeminar =

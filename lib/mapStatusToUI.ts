@@ -16,13 +16,19 @@ export function mapStatusToUI({
   proposalStatus: string;
   hasSeminar: boolean;
 }): StatusUI {
-  // 1️⃣ Proposal baru diajukan
-  if (proposalStatus === "Diajukan") {
+
+
+  // 🟡 Pengajuan proposal (SEMUA VARIAN)
+  if (
+    proposalStatus === "Pengajuan Proposal" ||
+    proposalStatus === "Menunggu Persetujuan Dosbing"
+  ) {
     return {
       label: "Pengajuan Proposal",
       color: "bg-amber-100 text-amber-700 border-amber-200",
     };
   }
+  
 
   // 2️⃣ Sudah diterima, tapi belum seminar
   if (proposalStatus === "Diterima" && !hasSeminar) {

@@ -101,7 +101,7 @@ const fetchProposalPending = async () => {
         proposal:proposals (
           id, status,
           mahasiswa:profiles ( nama, npm ),
-          seminar:seminar_requests ( id )
+          seminar:seminar_requests ( id , status)
         )
       `)
       .eq("dosen_id", uid);
@@ -110,7 +110,9 @@ const fetchProposalPending = async () => {
 
     const mapped: MahasiswaBimbingan[] = (data || []).map((row: any) => {
       const proposal = row.proposal;
-      const hasSeminar = (proposal?.seminar?.length ?? 0) > 0;
+      const hasSeminar =
+  proposal?.seminar?.some((s: any) => s.status === "Disetujui") ?? false;
+
       const ui = mapStatusToUI({
         proposalStatus: proposal.status,
         hasSeminar

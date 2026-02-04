@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { mapStatusToUI } from "@/lib/mapStatusToUI";
 import { 
   Search, Bell, ArrowLeft, FileText, 
   CheckCircle, Eye, Check, X, Download, 
@@ -104,19 +105,15 @@ export default function DetailProgresTendikClient() {
       setDocuments(currentDocs);
 
       // ================= LOGIKA TIMELINE DINAMIS =================
-      const seminarReq = propData.seminar_requests?.find((r: any) => r.tipe === 'seminar');
-      const totalDocs = currentDocs.length;
-      const validDocs = currentDocs.filter((d: any) => d.status === 'Lengkap').length;
+     const hasSeminar =
+  propData.seminar_requests?.some((s: any) => s.tipe === "seminar") ?? false;
 
-      if (propData.status === 'Lulus Sidang') setTahap("SELESAI");
-      else if (seminarReq?.status === 'Selesai') setTahap("PERBAIKAN PASCA SEMINAR");
-      else if (seminarReq?.status === 'Dijadwalkan') setTahap("SEMINAR DIJADWALKAN");
-      else if (totalDocs > 0 && validDocs < REQUIRED_DOCS.length) setTahap("VERIFIKASI BERKAS");
-      else if (totalDocs >= REQUIRED_DOCS.length) setTahap("UPLOAD DOKUMEN");
-      else if (propData.status === 'Diterima') setTahap("PROSES BIMBINGAN");
-      else if (propData.status === 'Menunggu Persetujuan') setTahap("PERSETUJUAN JUDUL");
-      else setTahap("PENGAJUAN");
-      // ===========================================================
+const ui = mapStatusToUI({
+  proposalStatus: propData.status,
+  hasSeminar,
+});
+
+setTahap(ui.label);
 
       // 2. Fetch Bimbingan
       const { data: bimData } = await supabase
@@ -182,18 +179,19 @@ export default function DetailProgresTendikClient() {
 
       <div className="flex-1 ml-64 flex flex-col h-full">
         {/* Header Tetap Sama */}
-        <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
-          <div className="flex items-center gap-4">
-            <button onClick={() => router.back()} className="p-2.5 bg-slate-100 hover:bg-white border border-transparent hover:border-slate-200 rounded-xl transition-all group">
-              <ArrowLeft size={20} className="text-slate-500 group-hover:text-blue-600" />
-            </button>
-            <span className="text-sm font-black tracking-[0.2em] text-slate-400">Panel Kendali Tendik</span>
-          </div>
-          <div className="flex items-center gap-6">
-            <span className="text-xs font-black tracking-[0.4em] text-blue-600 border-r border-slate-200 pr-6 uppercase">Simpro</span>
-            <Bell size={20} className="text-slate-400" />
-          </div>
-        </header>
+          <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
+                          <div className="flex items-center gap-6">
+                            <div className="relative w-72 group">
+                            </div>
+                          </div>
+                
+                          <div className="flex items-center gap-6">
+                            {/* Minimalist SIMPRO Text */}
+                            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
+                              Simpro
+                            </span>
+                          </div>
+                        </header>
 
         <main className="flex-1 p-10 overflow-y-auto custom-scrollbar">
           {/* Profile Card Tetap Sama */}

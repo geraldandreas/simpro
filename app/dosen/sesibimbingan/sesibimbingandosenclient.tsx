@@ -51,7 +51,7 @@ interface SessionDetail {
   }[];
 }
 
-export default function SesiBimbinganDosenClient() {
+export default function SesiBimbinganKaprodiClient() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const sessionId = searchParams.get("id");
@@ -231,21 +231,24 @@ setExistingFileUrl(latestFeedback?.file_url ?? null);
   setSaving(true);
 
   try {
-    let fileUrl: string | null = null;
+    let fileUrl: string | null = existingFileUrl ?? null;
+
 
 
     // 1️⃣ Upload file balasan (jika ada)
-    if (fileBalasan) {
-      const filePath = `${sessionId}/${Date.now()}_${fileBalasan.name}`;
+    // 1️⃣ Upload file baru (jika ada)
+if (fileBalasan) {
+  const filePath = `${sessionId}/${Date.now()}_${fileBalasan.name}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from("feedback_draft")
-        .upload(filePath, fileBalasan);
+  const { error: uploadError } = await supabase.storage
+    .from("feedback_draft")
+    .upload(filePath, fileBalasan);
 
-      if (uploadError) throw uploadError;
+  if (uploadError) throw uploadError;
 
-      fileUrl = `feedback_draft/${filePath}`;
-    }
+  fileUrl = `feedback_draft/${filePath}`;
+}
+
 
     if (feedbackId) {
   // UPDATE (edit feedback lama)
@@ -255,6 +258,7 @@ setExistingFileUrl(latestFeedback?.file_url ?? null);
       komentar,
       file_url: fileUrl,
       status_revisi: statusRevisi,
+      ...(fileUrl ? { file_url: fileUrl } : {}) 
     })
     .eq("id", feedbackId);
 } else {
@@ -441,37 +445,37 @@ setExistingFileUrl(latestFeedback?.file_url ?? null);
               <h3 className="text-lg font-bold text-gray-900 mb-4">Dokumen Mahasiswa</h3>
               
               {draft ? (
-              <div className="flex items-center justify-between bg-white border border-gray-200 p-4 rounded-xl mb-6 shadow-sm">
-                <div className="flex items-center gap-4">
-                  <div className="p-3 bg-blue-50 rounded-lg text-blue-600">
-                    <FileText size={24} />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-gray-800">
-                      {draft.file_url.split("/").pop()}
-                    </p>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      Diunggah:{" "}
-                      {new Date(draft.uploaded_at).toLocaleDateString("id-ID")}
-                    </p>
-                  </div>
-                </div>
-                <button
-              onClick={() => handleDownloadDraft(draft.file_url)}
-              className="bg-[#365b8e] hover:bg-[#2a466f] text-white px-5 py-2.5 rounded-lg text-xs font-bold transition shadow-sm flex items-center gap-2"
-            >
-              <Download size={16} /> Unduh
-            </button>
+  <div className="flex items-center justify-between bg-white border border-gray-200 p-4 rounded-xl mb-6 shadow-sm">
+    <div className="flex items-center gap-4">
+      <div className="p-3 bg-blue-50 rounded-lg text-blue-600">
+        <FileText size={24} />
+      </div>
+      <div>
+        <p className="text-sm font-bold text-gray-800">
+          {draft.file_url.split("/").pop()}
+        </p>
+        <p className="text-xs text-gray-400 mt-0.5">
+          Diunggah:{" "}
+          {new Date(draft.uploaded_at).toLocaleDateString("id-ID")}
+        </p>
+      </div>
+    </div>
+     <button
+  onClick={() => handleDownloadDraft(draft.file_url)}
+  className="bg-[#365b8e] hover:bg-[#2a466f] text-white px-5 py-2.5 rounded-lg text-xs font-bold transition shadow-sm flex items-center gap-2"
+>
+  <Download size={16} /> Unduh
+</button>
 
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center p-8 bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl mb-6 text-gray-400">
-                <AlertCircle size={24} className="mb-2 opacity-50" />
-                <p className="text-sm font-medium">
-                  Mahasiswa belum mengunggah dokumen draft.
-                </p>
-              </div>
-            )}
+  </div>
+) : (
+  <div className="flex flex-col items-center justify-center p-8 bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl mb-6 text-gray-400">
+    <AlertCircle size={24} className="mb-2 opacity-50" />
+    <p className="text-sm font-medium">
+      Mahasiswa belum mengunggah dokumen draft.
+    </p>
+  </div>
+)}
 
 
               <div className="mb-6">
