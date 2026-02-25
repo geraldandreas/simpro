@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import { sendNotification } from "@/lib/notificationUtils";
 import { supabase } from "@/lib/supabaseClient";
 import { 
   ArrowLeft, Download, FileText, UploadCloud, 
@@ -51,7 +52,7 @@ interface SessionDetail {
   }[];
 }
 
-export default function SesiBimbinganKaprodiClient() {
+export default function SesiBimbinganDosenClient() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const sessionId = searchParams.get("id");
@@ -61,6 +62,7 @@ export default function SesiBimbinganKaprodiClient() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [isSeminarApproved, setIsSeminarApproved] = useState(false); // New State
+
   
   // Form States
   const [komentar, setKomentar] = useState("");
@@ -70,6 +72,9 @@ export default function SesiBimbinganKaprodiClient() {
   const [feedbackId, setFeedbackId] = useState<string | null>(null);
   const [existingFileUrl, setExistingFileUrl] = useState<string | null>(null);
   const [namaBersihURL, setNamaBersih] = useState<string | null>(null);
+  const [validGuidanceCount, setValidGuidanceCount] = useState(0);
+
+  
 
 
 
@@ -87,6 +92,7 @@ export default function SesiBimbinganKaprodiClient() {
       setLoading(true);
       
       // 1. Fetch Session Data
+      
       const { data: sessionData, error } = await supabase
   .from("guidance_sessions")
   .select(`
@@ -117,6 +123,38 @@ export default function SesiBimbinganKaprodiClient() {
       setSession(sessionData); 
       setKehadiran(sessionData.kehadiran_mahasiswa || null);
       setStatusSesi(sessionData.status);
+
+      // ================= HITUNG BIMBINGAN VALID =================
+const { data: allSessions } = await supabase
+  .from("guidance_sessions")
+  .select(`
+    id,
+    kehadiran_mahasiswa,
+    session_feedbacks (
+      status_revisi,
+      created_at
+    )
+  `)
+  .eq("proposal_id", sessionData.proposal.id)
+  .eq("dosen_id", sessionData.dosen_id);
+
+// ambil feedback TERAKHIR tiap sesi
+const validCount =
+  allSessions?.filter(s => {
+    const latest = s.session_feedbacks?.sort(
+      (a: any, b: any) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    )[0];
+
+    return (
+      s.kehadiran_mahasiswa === "hadir" &&
+      latest?.status_revisi === "disetujui"
+    );
+  }).length || 0;
+
+setValidGuidanceCount(validCount);
+// ==========================================================
+
 
       // 3️⃣ Fetch feedback dosen
 const { data: feedbackData, error: feedbackError } = await supabase
@@ -168,6 +206,7 @@ setExistingFileUrl(latestFeedback?.file_url ?? null);
     }
   };
 
+  
 
 
   // --- ACTIONS ---
@@ -214,8 +253,7 @@ setExistingFileUrl(latestFeedback?.file_url ?? null);
     alert("Gagal mengunduh file");
   }
 };
-
- const handleSave = async () => {
+const handleSave = async () => {
   if (!sessionId) return;
 
   if (!kehadiran) {
@@ -233,64 +271,83 @@ setExistingFileUrl(latestFeedback?.file_url ?? null);
   try {
     let fileUrl: string | null = existingFileUrl ?? null;
 
-
-
-    // 1️⃣ Upload file balasan (jika ada)
     // 1️⃣ Upload file baru (jika ada)
-if (fileBalasan) {
-  const filePath = `${sessionId}/${Date.now()}_${fileBalasan.name}`;
+    if (fileBalasan) {
+      const filePath = `${sessionId}/${Date.now()}_${fileBalasan.name}`;
+      const { error: uploadError } = await supabase.storage
+        .from("feedback_draft")
+        .upload(filePath, fileBalasan);
 
-  const { error: uploadError } = await supabase.storage
-    .from("feedback_draft")
-    .upload(filePath, fileBalasan);
+      if (uploadError) throw uploadError;
+      fileUrl = `feedback_draft/${filePath}`;
+    }
 
-  if (uploadError) throw uploadError;
-
-  fileUrl = `feedback_draft/${filePath}`;
-}
-
-
+    // 2️⃣ Simpan Feedback (Insert/Update)
     if (feedbackId) {
-  // UPDATE (edit feedback lama)
-  await supabase
-    .from("session_feedbacks")
-    .update({
-      komentar,
-      file_url: fileUrl,
-      status_revisi: statusRevisi,
-      ...(fileUrl ? { file_url: fileUrl } : {}) 
-    })
-    .eq("id", feedbackId);
-} else {
-  // INSERT (feedback pertama)
-  await supabase
-    .from("session_feedbacks")
-    .insert({
-      session_id: sessionId,
-      dosen_id: (await supabase.auth.getUser()).data.user?.id,
-      komentar,
-      file_url: fileUrl,
-      status_revisi: statusRevisi,
-    });
-}
-  
-    
-    setFileBalasan(null);
-    await fetchData();
+      await supabase
+        .from("session_feedbacks")
+        .update({
+          komentar,
+          file_url: fileUrl,
+          status_revisi: statusRevisi,
+        })
+        .eq("id", feedbackId);
+    } else {
+      await supabase
+        .from("session_feedbacks")
+        .insert({
+          session_id: sessionId,
+          dosen_id: (await supabase.auth.getUser()).data.user?.id,
+          komentar,
+          file_url: fileUrl,
+          status_revisi: statusRevisi,
+        });
+    }
 
+    // 3️⃣ Update Kehadiran dan Status Sesi
     const { error: sessionError } = await supabase
       .from("guidance_sessions")
       .update({
-        status: statusSesi,                // selesai 
-        kehadiran_mahasiswa: kehadiran,          // hadir / tidak_hadir
+        status: "selesai", // Langsung tandai selesai saat disimpan
+        kehadiran_mahasiswa: kehadiran,
       })
       .eq("id", sessionId);
 
     if (sessionError) throw sessionError;
 
-   alert("✅ Feedback berhasil disimpan");
-    router.refresh();
+    // 4️⃣ FETCH DATA TERBARU (Untuk memastikan sinkronisasi UI)
+    await fetchData();
 
+    // 🔥 5️⃣ KIRIM NOTIFIKASI TUNGGAL (DI AKHIR PROSES)
+    if (session?.proposal?.id) {
+      const { data: student } = await supabase
+        .from("proposals")
+        .select("user_id")
+        .eq("id", session.proposal.id)
+        .single();
+
+      if (student?.user_id) {
+        // Tentukan label status bimbingan secara tepat
+        const statusLabel = statusRevisi === "disetujui" ? "ACC DRAFT" : "PERLU REVISI";
+        
+        // Cek apakah ada file balasan baru atau file yang sudah ada sebelumnya
+        const adaFile = fileBalasan || existingFileUrl;
+        const infoFile = adaFile ? " beserta dokumen perbaikan" : "";
+        
+        // Tambahkan info kehadiran mahasiswa di dalam pesan
+        const infoHadir = kehadiran === "hadir" ? "HADIR" : "TIDAK HADIR";
+
+        await sendNotification(
+          student.user_id,
+          "Update Feedback Bimbingan",
+          `Dosen ${session.dosen.nama} memberikan status ${statusLabel}${infoFile} (Status Kehadiran: ${infoHadir}) untuk Sesi ke-${session.sesi_ke}.`
+        );
+      }
+    }
+
+    alert("✅ Feedback dan Kehadiran berhasil disimpan");
+    setFileBalasan(null);
+    router.refresh();
   } catch (err: any) {
     console.error(err);
     alert("❌ Gagal menyimpan feedback");
@@ -342,7 +399,7 @@ if (fileBalasan) {
         .insert({
           proposal_id: session.proposal.id,
           tipe: "seminar",
-          status: "Menunggu Persetujuan",
+          status: "draft",
           approved_by_p1: role === "utama" || role === "pembimbing1",
           approved_by_p2: role === "pendamping",
         })
@@ -367,21 +424,22 @@ if (fileBalasan) {
       if (error) throw error;
     }
 
-    // 4️⃣ CEK APAKAH SUDAH DI-ACC KEDUANYA
-    const { data: updated } = await supabase
-      .from("seminar_requests")
-      .select("approved_by_p1, approved_by_p2")
-      .eq("id", seminarRequestId)
-      .single();
-
-    if (updated?.approved_by_p1 && updated?.approved_by_p2) {
-      await supabase
-        .from("seminar_requests")
-        .update({ status: "Disetujui" })
-        .eq("id", seminarRequestId);
-    }
-
     alert("✅ ACC Seminar berhasil dicatat");
+
+    const { data: student } = await supabase
+  .from("proposals")
+  .select("user_id")
+  .eq("id", session.proposal.id)
+  .single();
+
+if (student?.user_id) {
+  await sendNotification(
+    student.user_id,
+    "ACC Seminar",
+    `Dosen ${session.dosen.nama} telah memberikan ACC Seminar kepada Anda.`
+  );
+}
+
 
   } catch (err: any) {
     console.error(err);
@@ -542,26 +600,43 @@ if (fileBalasan) {
           <div className="lg:col-span-1 space-y-6">
             
             {/* === NEW: ACC SEMINAR BUTTON (CONDITIONAL) === */}
-            {session.sesi_ke >= 10 && !isSeminarApproved && (
-              <div className="bg-[#eff6ff] rounded-2xl border border-blue-200 p-6 shadow-sm">
-                <div className="flex items-start gap-3 mb-4">
-                  <CheckCircle className="text-blue-600 mt-1" size={20} />
-                  <div>
-                    <h3 className="text-sm font-bold text-blue-900">Kelayakan Seminar</h3>
-                    <p className="text-xs text-blue-700 mt-1">
-                      Mahasiswa ini telah mencapai sesi ke-{session.sesi_ke}. Jika dirasa sudah layak, Anda dapat memberikan persetujuan seminar sekarang.
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={handleAccSeminar}
-                  disabled={saving}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl text-sm shadow-md transition-all active:scale-95 disabled:opacity-70"
-                >
-                  {saving ? "Memproses..." : "ACC Seminar"}
-                </button>
-              </div>
-            )}
+            {!isSeminarApproved && (
+  validGuidanceCount >= 10 ? (
+    <div className="bg-[#eff6ff] rounded-2xl border border-blue-200 p-6 shadow-sm">
+      <div className="flex items-start gap-3 mb-4">
+        <CheckCircle className="text-blue-600 mt-1" size={20} />
+        <div>
+          <h3 className="text-sm font-bold text-blue-900">Kelayakan Seminar</h3>
+          <p className="text-xs text-blue-700 mt-1">
+            Mahasiswa memiliki {validGuidanceCount} bimbingan valid. Syarat terpenuhi untuk memberikan ACC.
+          </p>
+        </div>
+      </div>
+
+      <button
+        onClick={handleAccSeminar}
+        disabled={saving}
+        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl text-sm shadow-md transition-all active:scale-95"
+      >
+        {saving ? "Memproses..." : "ACC Seminar"}
+      </button>
+    </div>
+  ) : (
+    <div className="bg-orange-50 rounded-2xl border border-orange-200 p-6 shadow-sm">
+      <div className="flex items-start gap-3">
+        <AlertCircle className="text-orange-600 mt-1" size={20} />
+        <div>
+          <h3 className="text-sm font-bold text-orange-900">Akses Seminar Terkunci</h3>
+          <p className="text-[11px] text-orange-700 mt-1">
+            Bimbingan Valid: {validGuidanceCount}/10. <br/>
+            Sesi dianggap sah jika mahasiswa <b>Hadir</b> dan status <b>ACC Draft</b>.
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+)}
+
 
             {/* === ALREADY APPROVED INFO === */}
             {isSeminarApproved && (

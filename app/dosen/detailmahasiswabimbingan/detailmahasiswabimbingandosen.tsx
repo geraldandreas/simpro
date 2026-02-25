@@ -2,6 +2,8 @@
 
 import React, { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import { sendNotification } from "@/lib/notificationUtils";
+
 import { supabase } from "@/lib/supabaseClient";
 // Sidebar dihapus
 import Link from "next/link"; 
@@ -42,7 +44,7 @@ interface proposalData {
   
 }
 
-export default function DetailMahasiswaBimbinganDosen () {
+export default function DetailMahasiswaBimbinganKaprodiClient() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const proposalId = searchParams.get("id");
@@ -91,6 +93,7 @@ if (!user) throw new Error("User belum login");
         .from("thesis_supervisors")
         .select(`role, dosen:profiles!thesis_supervisors_dosen_id_fkey ( nama )`)
         .eq("proposal_id", proposalId);
+      console.log("pembimbing1", supervisors)
       let p1 = "-", p2 = "-";
       supervisors?.forEach((s: any) => {
         if (s.role === "utama") p1 = s.dosen?.nama;
@@ -106,8 +109,6 @@ if (!user) throw new Error("User belum login");
         pembimbing1: p1,
         pembimbing2: p2,
       });
-
-      
 
       // 3. Ambil Riwayat Bimbingan
       const { data: guidanceData } = await supabase
@@ -134,34 +135,61 @@ if (!user) throw new Error("User belum login");
   };
 
   const handleSaveEdit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingSession) return;
-    setSavingEdit(true);
+  e.preventDefault();
+  if (!editingSession) return;
+  setSavingEdit(true);
 
-    try {
-      const { error } = await supabase
-        .from("guidance_sessions")
-        .update({
-          tanggal: editingSession.tanggal,
-          jam: editingSession.jam,
-          metode: editingSession.metode,
-          keterangan: editingSession.keterangan,
-          status: editingSession.status, // Ini yang mengubah jadi 'selesai'
-        })
-        .eq("id", editingSession.id);
+  try {
+    // 1. Update data sesi di database
+    const { error } = await supabase
+      .from("guidance_sessions")
+      .update({
+        tanggal: editingSession.tanggal,
+        jam: editingSession.jam,
+        metode: editingSession.metode,
+        keterangan: editingSession.keterangan,
+        status: editingSession.status,
+      })
+      .eq("id", editingSession.id);
 
-      if (error) throw error;
+    if (error) throw error;
 
-      alert("✅ Detail sesi berhasil diperbarui!");
-      setIsEditModalOpen(false);
-      fetchData(); // Refresh data
+    // 2. Ambil user_id mahasiswa & Nama Dosen yang sedang login
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    // Ambil info nama dosen dari state student atau fetch ulang profile jika perlu
+    const namaDosen = student?.pembimbing1 || "Dosen Pembimbing";
 
-    } catch (err: any) {
-      alert("Gagal update: " + err.message);
-    } finally {
-      setSavingEdit(false);
+    const { data: proposal } = await supabase
+      .from("proposals")
+      .select("user_id")
+      .eq("id", proposalId)
+      .single();
+
+    if (proposal?.user_id) {
+      let title = "Update Jadwal Bimbingan";
+      let message = `Dosen ${namaDosen} telah memperbarui jadwal bimbingan Sesi ${editingSession.sesi_ke}.`;
+
+      // Jika statusnya dibatalkan
+      if (editingSession.status === "dibatalkan") {
+        title = "Bimbingan Dibatalkan";
+        message = `Maaf, bimbingan Sesi ${editingSession.sesi_ke} telah dibatalkan oleh Dosen ${namaDosen}.`;
+      }
+
+      // Kirim Notifikasi
+      await sendNotification(proposal.user_id, title, message);
     }
-  };
+
+    alert("✅ Detail sesi berhasil diperbarui!");
+    setIsEditModalOpen(false);
+    fetchData(); 
+
+  } catch (err: any) {
+    alert("Gagal update: " + err.message);
+  } finally {
+    setSavingEdit(false);
+  }
+};
 
   // Helper UI
   const formatDate = (dateStr: string) => {
@@ -280,7 +308,7 @@ if (!user) throw new Error("User belum login");
                             <Edit size={14} /> Edit Detail
                           </button>
 
-                          {/* TOMBOL LIHAT (Link ke Halaman Detail Sesi Dosen) */}
+                          {/* TOMBOL LIHAT (Link ke Halaman Detail Sesi Kaprodi) */}
                           <Link 
                             href={`/dosen/sesibimbingan?id=${sesi.id}`}
                             className="flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-700 px-3 py-1.5 rounded transition hover:bg-blue-50"

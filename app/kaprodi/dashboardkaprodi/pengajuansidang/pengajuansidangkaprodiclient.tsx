@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import NotificationBell from '@/components/notificationBell';
 import {
   Search, 
   Bell, 
@@ -97,19 +98,25 @@ export default function PengajuanSidangKaprodiClient() {
     <div className="min-h-screen bg-[#F4F7FE] font-sans text-slate-700">
       {/* HEADER */}
       <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
-          <div className="flex items-center gap-6">
-            <div className="relative w-72 group">
-            </div>
-          </div>
-
-          <div className="flex items-center gap-6">
-            {/* Minimalist SIMPRO Text */}
-            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
-              Simpro
-            </span>
-          </div>
-        </header>
-
+                                <div className="flex items-center gap-6">
+                                  <div className="relative w-72 group">
+                                  </div>
+                                </div>
+                      
+                              <div className="flex items-center gap-6">
+                          {/* KOMPONEN LONCENG BARU */}
+                          <NotificationBell />
+                          
+                          <div className="h-8 w-[1px] bg-slate-200 mx-2" />
+                      
+                                <div className="flex items-center gap-6">
+                                  {/* Minimalist SIMPRO Text */}
+                                  <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
+                                    Simpro
+                                  </span>
+                                </div>
+                                </div>
+                              </header>
       {/* MAIN CONTENT */}
       <main className="p-10 max-w-[1400px] mx-auto w-full">
         <div className="mb-10 flex items-end justify-between">

@@ -1,6 +1,8 @@
 "use client";
 
 import { JSX, useEffect, useState } from "react";
+import NotificationBell from '@/components/notificationBell';
+import { sendNotification } from "@/lib/notificationUtils";
 import Link from "next/link";
 import { 
   Search, 
@@ -30,21 +32,39 @@ export interface MahasiswaBimbingan {
 export function mapStatusToUI(params: {
   proposalStatus: string | null;
   hasSeminar: boolean;
+  seminarStatus: string | null;
+  hasSidang: boolean;
+  verifiedDocsCount: number;
+  uploadedDocsCount: number;
+  isEligible: boolean;
 }) {
-  const { proposalStatus, hasSeminar } = params;
+  const { proposalStatus, seminarStatus, hasSidang, verifiedDocsCount, uploadedDocsCount, isEligible } = params;
 
-  if (
-    proposalStatus === "Menunggu Persetujuan Dosbing" ||
-    proposalStatus === "Pengajuan Proposal"
-  ) {
+  // 1. PRIORITAS TERTINGGI: Sidang
+  if (hasSidang) {
+    return { label: "Sidang Skripsi", color: "bg-emerald-100 text-emerald-700 border-emerald-200" };
+  }
+
+  // 2. PRIORITAS SEMINAR: Selesai atau Hasil Verifikasi Tendik
+  if (seminarStatus === "Selesai") {
+    return { label: "Perbaikan Pasca Seminar", color: "bg-orange-100 text-orange-700 border-orange-200" };
+  }
+
+  if (verifiedDocsCount >= 3) {
+    return { label: "Seminar Hasil", color: "bg-emerald-100 text-emerald-700 border-emerald-200" };
+  }
+
+  // 3. LOGIKA TAHAP AWAL & GATEKEEPING BIMBINGAN
+  if (proposalStatus === "Menunggu Persetujuan Dosbing" || proposalStatus === "Pengajuan Proposal") {
     return { label: "Pengajuan Proposal", color: "bg-amber-100 text-amber-700 border-amber-200" };
   }
 
-  if (proposalStatus === "Diterima" && hasSeminar) {
-    return { label: "Proses Kesiapan Seminar", color: "bg-blue-100 text-blue-700 border-blue-200" };
-  }
-
   if (proposalStatus === "Diterima") {
+    if (isEligible) {
+      if (uploadedDocsCount >= 3) return { label: "Verifikasi Berkas", color: "bg-purple-100 text-purple-700 border-purple-200" };
+      if (uploadedDocsCount > 0) return { label: "Unggah Dokumen Seminar", color: "bg-blue-100 text-blue-700 border-blue-200" };
+      return { label: "Proses Kesiapan Seminar", color: "bg-blue-100 text-blue-700 border-blue-200" };
+    }
     return { label: "Proses Bimbingan", color: "bg-indigo-100 text-indigo-700 border-indigo-200" };
   }
 
@@ -58,6 +78,7 @@ export default function MahasiswaBimbinganKaprodiClient() {
   const [students, setStudents] = useState<MahasiswaBimbingan[]>([]);
   const [loading, setLoading] = useState(true);
   const [dosenId, setDosenId] = useState<string | null>(null);
+  const [dosenName, setDosenName] = useState("");
 
   // Form state
   const [metode, setMetode] = useState("Luring");
@@ -71,51 +92,96 @@ export default function MahasiswaBimbinganKaprodiClient() {
   const [saving, setSaving] = useState(false);
 
   // ================= FETCH (Logika Backend Tetap) =================
+const fetchMahasiswaBimbingan = async () => {
+  try {
+    setLoading(true);
+    const { data: session } = await supabase.auth.getSession();
+    const uid = session?.session?.user?.id;
+    if (!uid) return;
+    setDosenId(uid);
 
-  const fetchMahasiswaBimbingan = async () => {
-    try {
-      setLoading(true);
-      const { data: session } = await supabase.auth.getSession();
-      const uid = session?.session?.user?.id;
-      if (!uid) return;
-      setDosenId(uid);
+    const { data: profile } = await supabase.from("profiles").select("nama").eq("id", uid).single();
+    if (profile) setDosenName(profile.nama);
 
-      const { data, error } = await supabase
-        .from("thesis_supervisors")
-        .select(`
-          proposal:proposals (
-            id, status,
-            mahasiswa:profiles ( nama, npm ),
-            seminar:seminar_requests ( id )
-          )
-        `)
-        .eq("dosen_id", uid);
-        console.log("data", data)
+    // Fetch data dengan relasi lengkap agar sinkron dengan DetailProgresTendik
+    const { data, error } = await supabase
+      .from("thesis_supervisors")
+      .select(`
+        proposal:proposals (
+          id, status,
+          mahasiswa:profiles ( nama, npm ),
+          seminar:seminar_requests ( status, approved_by_p1, approved_by_p2, created_at ),
+          sidang:sidang_requests ( id ),
+          docs:seminar_documents ( status ),
+          supervisors:thesis_supervisors ( role, dosen_id ),
+          sessions:guidance_sessions ( dosen_id, kehadiran_mahasiswa, session_feedbacks ( status_revisi ) )
+        )
+      `)
+      .eq("dosen_id", uid);
 
-      if (error) throw error;
+    if (error) throw error;
 
-      const mapped: MahasiswaBimbingan[] = (data || []).map((row: any) => {
-        const proposal = row.proposal;
-        const hasSeminar = (proposal?.seminar?.length ?? 0) > 0;
-        const ui = mapStatusToUI({ proposalStatus: proposal.status, hasSeminar });
+    const mapped: MahasiswaBimbingan[] = (data || []).map((row: any) => {
+      const p = row.proposal;
+      
+      // A. Ambil Seminar Request Terbaru
+      const activeSeminar = p.seminar?.sort((a: any, b: any) => 
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      )[0] || null;
+      
+      // B. Cek Eksistensi Jadwal Sidang
+      const hasSidang = Array.isArray(p.sidang) && p.sidang.length > 0;
 
-        return {
-          proposal_id: proposal.id,
-          nama: proposal.mahasiswa.nama,
-          npm: proposal.mahasiswa.npm,
-          uiStatusLabel: ui.label,
-          uiStatusColor: ui.color,
-        };
+      // C. Hitung Berkas Tervalidasi Tendik
+      const docs = p.docs || [];
+      const verifiedCount = docs.filter((d: any) => d.status === 'Lengkap').length;
+
+      // D. Hitung Bimbingan Per-Peran (P1 & P2)
+      let p1Count = 0;
+      let p2Count = 0;
+      p.supervisors?.forEach((sp: any) => {
+        const count = p.sessions?.filter((s: any) => 
+          s.dosen_id === sp.dosen_id && 
+          s.kehadiran_mahasiswa === 'hadir' &&
+          s.session_feedbacks?.[0]?.status_revisi === "disetujui"
+        ).length || 0;
+
+        if (sp.role === "utama") p1Count = count;
+        else if (sp.role === "pendamping") p2Count = count;
       });
-      setStudents(mapped);
-    } catch (err) {
-      console.error("❌ Gagal load mahasiswa bimbingan:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
+
+      // E. Tentukan Kelayakan (isEligible)
+      const approvedByAll = !!activeSeminar?.approved_by_p1 && !!activeSeminar?.approved_by_p2;
+      const isEligible = p1Count >= 10 && p2Count >= 10 && approvedByAll;
+
+      const ui = mapStatusToUI({ 
+        proposalStatus: p.status, 
+        hasSeminar: !!activeSeminar,
+        seminarStatus: activeSeminar?.status,
+        hasSidang: hasSidang,
+        verifiedDocsCount: verifiedCount,
+        uploadedDocsCount: docs.length,
+        isEligible: isEligible
+      });
+
+      return {
+        proposal_id: p.id,
+        nama: p.mahasiswa.nama,
+        npm: p.mahasiswa.npm,
+        uiStatusLabel: ui.label,
+        uiStatusColor: ui.color,
+      };
+    });
+    setStudents(mapped);
+  } catch (err) {
+    console.error("❌ Gagal load data:", err);
+  } finally {
+    setLoading(false);
+  }
+};
 
   useEffect(() => { fetchMahasiswaBimbingan(); }, []);
+
 
   // ================= CALENDAR LOGIC =================
 
@@ -133,16 +199,30 @@ export default function MahasiswaBimbinganKaprodiClient() {
 
   const renderCalendarDays = () => {
     const days: JSX.Element[] = [];
-    for (let i = 0; i < firstDayIndex; i++) { days.push(<div key={`empty-${i}`} />); }
+    
+    // Sesuaikan index hari pertama (Standard JS 0=Minggu, Kalender kita mulai dari Senin)
+    // Jika firstDayIndex = 0 (Minggu), ubah jadi 6 agar berada di akhir baris
+    const adjustedFirstDay = firstDayIndex === 0 ? 6 : firstDayIndex - 1;
+
+    for (let i = 0; i < adjustedFirstDay; i++) { 
+      days.push(<div key={`empty-${i}`} />); 
+    }
+
     for (let d = 1; d <= daysInMonth; d++) {
       const date = new Date(year, month, d);
       const isSelected = selectedDate && isSameDay(date, selectedDate);
+      const isToday = isSameDay(date, new Date());
+
       days.push(
         <div
           key={d}
           onClick={() => handleDateClick(d)}
           className={`text-[11px] font-black w-8 h-8 flex items-center justify-center rounded-xl cursor-pointer transition-all
-            ${isSelected ? "bg-blue-600 text-white shadow-lg shadow-blue-200 scale-110" : "text-slate-600 hover:bg-blue-50 hover:text-blue-600"}`}
+            ${isSelected 
+              ? "bg-blue-600 text-white shadow-lg shadow-blue-200 scale-110" 
+              : isToday 
+                ? "bg-blue-50 text-blue-600 border border-blue-100" 
+                : "text-slate-600 hover:bg-blue-50 hover:text-blue-600"}`}
         >
           {d}
         </div>
@@ -151,7 +231,14 @@ export default function MahasiswaBimbinganKaprodiClient() {
     return days;
   };
 
-  const formatDateInput = () => selectedDate ? selectedDate.toISOString().split("T")[0] : "";
+ 
+const formatDateInput = () => {
+  if (!selectedDate) return "";
+  const y = selectedDate.getFullYear();
+  const m = (selectedDate.getMonth() + 1).toString().padStart(2, '0');
+  const d = selectedDate.getDate().toString().padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
   const buildTime24 = () => {
     let h = parseInt(hour, 10);
     if (period === "PM" && h !== 12) h += 12;
@@ -159,50 +246,89 @@ export default function MahasiswaBimbinganKaprodiClient() {
     return `${h.toString().padStart(2, "0")}:${minute}:00`;
   };
 
-  const handleApplySchedule = async () => {
+ const handleApplySchedule = async () => {
     try {
       if (!dosenId || !selectedDate || students.length === 0) {
         alert("Mohon lengkapi data jadwal dan mahasiswa.");
         return;
       }
       setSaving(true);
+
+      const localDate = `${selectedDate.getFullYear()}-${(selectedDate.getMonth() + 1).toString().padStart(2, '0')}-${selectedDate.getDate().toString().padStart(2, '0')}`;
+
+      // 1. Simpan Jadwal ke Database
       const payload = students.map((mhs) => ({
         proposal_id: mhs.proposal_id,
         sesi_ke: Number(sesi),
-        tanggal: formatDateInput(),
+        tanggal: localDate,
         jam: buildTime24(),
         metode,
         keterangan,
         status: "belum_dimulai",
         dosen_id: dosenId,
       }));
+
       const { error } = await supabase.from("guidance_sessions").insert(payload);
       if (error) throw error;
-      alert("✅ Jadwal bimbingan berhasil diterapkan ke semua mahasiswa");
+
+      // 🔥 2. KIRIM NOTIFIKASI MASSAL KE SETIAP MAHASISWA
+      const tglFormat = selectedDate.toLocaleDateString("id-ID", { 
+        day: "numeric", month: "long", year: "numeric" 
+      });
+
+      const notificationPromises = students.map(async (mhs) => {
+        // Ambil user_id mahasiswa berdasarkan proposal_id
+        const { data: prop } = await supabase
+          .from("proposals")
+          .select("user_id")
+          .eq("id", mhs.proposal_id)
+          .single();
+
+        if (prop?.user_id) {
+          // Kirim pesan spesifik berisi Nama Dosen dan Nomor Sesi
+          return sendNotification(
+            prop.user_id,
+            "Jadwal Bimbingan Baru",
+            `Dosen ${dosenName} telah menetapkan jadwal bimbingan Sesi ${sesi} pada tanggal ${tglFormat} pukul ${hour}:${minute} ${period}.`
+          );
+        }
+      });
+
+      // Jalankan semua pengiriman secara paralel untuk kecepatan
+      await Promise.all(notificationPromises);
+
+      alert(`✅ Jadwal bimbingan Sesi ${sesi} berhasil diterapkan dan notifikasi terkirim!`);
     } catch (err) {
+      console.error(err);
       alert("Gagal menyimpan jadwal bimbingan");
     } finally {
       setSaving(false);
     }
   };
-
   return (
     <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-[#F4F7FE] font-sans text-slate-700">
       
       {/* HEADER */}
       <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
-          <div className="flex items-center gap-6">
-            <div className="relative w-72 group">
-            </div>
-          </div>
-
-          <div className="flex items-center gap-6">
-            {/* Minimalist SIMPRO Text */}
-            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
-              Simpro
-            </span>
-          </div>
-        </header>
+                <div className="flex items-center gap-6">
+                  <div className="relative w-72 group">
+                  </div>
+                </div>
+      
+              <div className="flex items-center gap-6">
+          {/* KOMPONEN LONCENG BARU */}
+          <NotificationBell />
+          
+          <div className="h-8 w-[1px] bg-slate-200 mx-2" />
+      
+                <div className="flex items-center gap-6">
+                  {/* Minimalist SIMPRO Text */}
+                  <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
+                    Simpro
+                  </span>
+                </div>
+                </div>
+              </header>
 
       {/* MAIN */}
       <main className="flex-1 p-10 max-w-[1400px] mx-auto w-full">

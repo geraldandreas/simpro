@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Search, Bell, MessageSquare, User, ArrowRight, LayoutDashboard, Calendar, ClipboardList } from "lucide-react";
+import { User, ArrowRight, LayoutDashboard, Calendar, ClipboardList } from "lucide-react";
+import { mapStatusToUI } from "@/lib/mapStatusToUI";
 import { supabase } from "@/lib/supabaseClient";
 import Link from "next/link"; 
 
@@ -21,9 +22,11 @@ interface StudentData {
   pembimbing2: string;
 }
 
+// ... (imports tetap sama)
+
 export default function DashboardDosenPage() {
   const [stats, setStats] = useState<DashboardStat[]>([
-    { count: 0, label: "Mahasiswa Bimbingan", icon: <User size={24} />, color: "blue" },
+    { count: 0, label: "Mahasiswa bimbingan", icon: <User size={24} />, color: "blue" },
     { count: 0, label: "Proposal Menunggu Persetujuan", icon: <ClipboardList size={24} />, color: "amber" }
   ]);
   
@@ -33,105 +36,127 @@ export default function DashboardDosenPage() {
 
   useEffect(() => {
     const fetchData = async () => {
-      try {
-        setLoading(true);
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
+  try {
+    setLoading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
 
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("nama")
-          .eq("id", user.id)
-          .single();
-        
-        if (profile) setDosenName(profile.nama);
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("nama")
+      .eq("id", user.id)
+      .single();
+    
+    if (profile) setDosenName(profile.nama);
 
-        const { data: bimbinganData, error } = await supabase
-          .from("thesis_supervisors")
-          .select(`
-            proposal_id,
-            role,
-            proposal:proposals (
-              id, judul, status,
-              user:profiles ( nama, npm ),
-              seminar_requests ( tipe, status )
-            )
-          `)
-          .eq("dosen_id", user.id);
-        
-        if (error) throw error;
+    // 1. FETCH DATA DENGAN RELASI MENDALAM (IDENTIK DENGAN KAPRODI)
+    const { data: bimbinganData, error } = await supabase
+      .from("thesis_supervisors")
+      .select(`
+        proposal_id,
+        role,
+        proposal:proposals (
+          id, judul, status,
+          user:profiles ( nama, npm ),
+          seminar:seminar_requests ( status, approved_by_p1, approved_by_p2, created_at ),
+          sidang:sidang_requests ( id ),
+          docs:seminar_documents ( status ),
+          supervisors:thesis_supervisors ( role, dosen_id, profiles ( nama ) ),
+          sessions:guidance_sessions ( dosen_id, kehadiran_mahasiswa, session_feedbacks ( status_revisi ) )
+        )
+      `)
+      .eq("dosen_id", user.id);
+    
+    if (error) throw error;
 
-        const proposalIds = bimbinganData.map((b: any) => b.proposal_id);
-        let supervisorsMap: Record<string, string> = {};
-        
-        if (proposalIds.length > 0) {
-          const { data: allSupervisors } = await supabase
-            .from("thesis_supervisors")
-            .select(`
-              proposal_id,
-              dosen:profiles!thesis_supervisors_dosen_id_fkey ( nama )
-            `)
-            .in("proposal_id", proposalIds)
-            .neq("dosen_id", user.id); 
+    let countProposalWait = 0;
 
-          allSupervisors?.forEach((s: any) => {
-            supervisorsMap[s.proposal_id] = s.dosen?.nama || "-";
-          });
-        }
+    const mappedStudents: StudentData[] = (bimbinganData || []).map((item: any) => {
+      const p = item.proposal;
+      
+      // A. Ambil Seminar Request Terbaru (Mencegah data duplikat FALSE)
+      const activeSeminar = p.seminar?.sort((a: any, b: any) => 
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      )[0] || null;
 
-        let countProposalWait = 0;
-        const mappedStudents: StudentData[] = bimbinganData.map((item: any) => {
-          const proposal = item.proposal;
-          const mhs = proposal?.user;
-          const seminar = proposal?.seminar_requests?.find((r: any) => r.tipe === 'seminar');
+      // B. Cek Sidang & Berkas
+      const hasSidang = Array.isArray(p.sidang) && p.sidang.length > 0;
+      const verifiedDocsCount = p.docs?.filter((d: any) => d.status === 'Lengkap').length || 0;
 
-          let displayStatus = "Proses Bimbingan";
-          if (proposal.status === "Menunggu Persetujuan Dosbing") {
-            displayStatus = "Pengajuan Proposal";
-            countProposalWait++;
-          } else if (seminar) {
-            if (['Menunggu Verifikasi', 'draft', 'Lengkap'].includes(seminar.status)) {
-              displayStatus = "Proses Kesiapan Seminar";
-            }
-          }
+      // C. Hitung Bimbingan P1 (Utama) & P2 (Pendamping)
+      let p1Count = 0;
+      let p2Count = 0;
+      p.supervisors?.forEach((sp: any) => {
+        const count = p.sessions?.filter((s: any) => 
+          s.dosen_id === sp.dosen_id && 
+          s.kehadiran_mahasiswa === 'hadir' &&
+          s.session_feedbacks?.[0]?.status_revisi === "disetujui"
+        ).length || 0;
 
-          return {
-            id: proposal.id,
-            name: mhs?.nama || "Tanpa Nama",
-            npm: mhs?.npm || "-",
-            status: displayStatus,
-            pembimbing2: supervisorsMap[proposal.id] || "-" 
-          };
-        });
+        if (sp.role === "utama") p1Count = count;
+        else if (sp.role === "pendamping") p2Count = count;
+      });
 
-        setStudents(mappedStudents);
-        setStats([
-          { count: mappedStudents.length, label: "Mahasiswa Bimbingan", icon: <User size={24} />, color: "blue" },
-          { count: countProposalWait, label: "Proposal Menunggu Persetujuan", icon: <ClipboardList size={24} />, color: "amber" }
-        ]);
+      // D. Tentukan Kelayakan (isEligible)
+      const approvedByAll = !!activeSeminar?.approved_by_p1 && !!activeSeminar?.approved_by_p2;
+      const isEligible = p1Count >= 10 && p2Count >= 10 && approvedByAll;
 
-      } catch (err) {
-        console.error("Error fetching dashboard:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
+      // E. Panggil Mapper Global (IDENTIK DENGAN DASHBOARD LAIN)
+      const ui = mapStatusToUI({
+        proposalStatus: p.status,
+        hasSeminar: !!activeSeminar,
+        seminarStatus: activeSeminar?.status,
+        hasSidang: hasSidang,
+        uploadedDocsCount: p.docs?.length || 0,
+        verifiedDocsCount: verifiedDocsCount,
+        isEligible: isEligible
+      });
+
+      if (p.status === "Menunggu Persetujuan Dosbing") countProposalWait++;
+
+      // F. Cari Nama Partner Bimbingan (Co-Pembimbing)
+      const partner = p.supervisors?.find((s: any) => s.dosen_id !== user.id);
+
+      return {
+        id: p.id,
+        name: p.user?.nama || "Tanpa Nama",
+        npm: p.user?.npm || "-",
+        status: ui.label, // Status Label sekarang sinkron
+        pembimbing2: partner?.profiles?.nama || "-" 
+      };
+    });
+
+    setStudents(mappedStudents);
+    setStats([
+      { count: mappedStudents.length, label: "Mahasiswa Bimbingan", icon: <User size={24} />, color: "blue" },
+      { count: countProposalWait, label: "Proposal Menunggu Persetujuan", icon: <ClipboardList size={24} />, color: "amber" }
+    ]);
+
+  } catch (err) {
+    console.error("Error fetching dashboard:", err);
+  } finally {
+    setLoading(false);
+  }
+};
 
     fetchData();
   }, []);
 
   const getStatusBadgeStyle = (status: string) => {
     switch (status) {
+      case "Sidang Skripsi":
+      case "Seminar Hasil": return "bg-emerald-50 text-emerald-600 border-emerald-100";
+      case "Perbaikan Pasca Seminar": return "bg-orange-50 text-orange-600 border-orange-100";
       case "Proses Kesiapan Seminar":
-        return "bg-indigo-50 text-indigo-600 border-indigo-100"; 
-      case "Pengajuan Proposal":
-        return "bg-amber-50 text-amber-600 border-amber-100"; 
-      case "Proses Bimbingan":
-        return "bg-emerald-50 text-emerald-600 border-emerald-100"; 
-      default:
-        return "bg-slate-50 text-slate-600 border-slate-100";
+      case "Verifikasi Berkas":
+      case "Unggah Dokumen Seminar": return "bg-blue-50 text-blue-600 border-blue-100"; 
+      case "Pengajuan Proposal": return "bg-amber-50 text-amber-600 border-amber-100"; 
+      case "Proses Bimbingan": return "bg-indigo-50 text-indigo-600 border-indigo-100"; 
+      default: return "bg-slate-50 text-slate-600 border-slate-100";
     }
   };
+
+  // ... (render logic tetap sama)
 
   return (
     <div className="flex min-h-screen bg-[#F8F9FB] font-sans text-slate-700">
@@ -181,7 +206,7 @@ export default function DashboardDosenPage() {
                 <div className="p-2.5 bg-blue-600 rounded-xl text-white shadow-lg shadow-blue-200">
                   <LayoutDashboard size={20} />
                 </div>
-                <h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Log Konsultasi Mahasiswa</h2>
+                <h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Daftar Mahasiswa Bimbingan</h2>
               </div>
 
               <div className="overflow-x-auto">
@@ -238,7 +263,7 @@ export default function DashboardDosenPage() {
                              </div>
                           </td>
                           <td className="px-8 py-8 text-center">
-                            <Link href={`/dosen/accproposal?id=${student.id}`}>
+                            <Link href={`/dosen/detailmahasiswabimbingan?id=${student.id}`}>
                               <button className="inline-flex items-center gap-2 px-6 py-3 bg-slate-900 hover:bg-blue-600 text-white text-[10px] font-black uppercase tracking-[0.15em] rounded-2xl transition-all shadow-lg active:scale-95 group/btn">
                                 DETAIL <ArrowRight size={14} className="group-hover/btn:translate-x-1 transition-transform" />
                               </button>

@@ -2,6 +2,8 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import Sidebar from "@/components/sidebar";
+import { sendNotification } from "@/lib/notificationUtils";
+import NotificationBell from "@/components/notificationBell";
 import { supabase } from "@/lib/supabaseClient";
 import {
   CloudUpload,
@@ -88,10 +90,16 @@ export default function PerbaikanMahasiswaClient() {
       if (!session) return;
 
       const { data: proposal } = await supabase
-        .from("proposals")
-        .select("id")
-        .eq("user_id", session.user.id)
-        .maybeSingle();
+  .from("proposals")
+  .select(`
+    id,
+    judul,
+    user:profiles (
+      nama
+    )
+  `)
+  .eq("user_id", session.user.id)
+  .maybeSingle();
 
       const { data: seminar } = await supabase
         .from("seminar_requests")
@@ -155,7 +163,18 @@ export default function PerbaikanMahasiswaClient() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
 
-      const { data: proposal } = await supabase.from("proposals").select("id").eq("user_id", session.user.id).maybeSingle();
+      const { data: proposal } = await supabase
+  .from("proposals")
+  .select(`
+    id,
+    judul,
+    user:profiles (
+      nama
+    )
+  `)
+  .eq("user_id", session.user.id)
+  .maybeSingle();
+
       const { data: seminar } = await supabase.from("seminar_requests").select("id").eq("proposal_id", proposal?.id).eq("tipe", "seminar").maybeSingle();
 
       const { error } = await supabase.from("sidang_requests").insert({
@@ -168,6 +187,24 @@ export default function PerbaikanMahasiswaClient() {
       if (error) {
         if (error.code === "23505") return alert("Sidang sudah pernah diajukan.");
         throw error;
+      }
+
+
+  const { data: kaprodi } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('role', 'kaprodi')
+        .maybeSingle();
+
+      if (kaprodi && proposal) {
+        const mhsNama = (proposal.user as any)?.nama || "Seorang mahasiswa";
+        const judulSkripsi = proposal.judul || "Tanpa Judul";
+
+        await sendNotification(
+          kaprodi.id,
+          "Pengajuan Sidang Skripsi",
+          `${mhsNama} telah mengajukan jadwal Sidang Akhir untuk judul: "${judulSkripsi}".`
+        );
       }
 
       alert("✅ Sidang berhasil diajukan! Menunggu jadwal Kaprodi.");
@@ -188,18 +225,25 @@ export default function PerbaikanMahasiswaClient() {
       <main className="flex-1 ml-64 flex flex-col h-screen overflow-y-auto">
         {/* HEADER */}
          <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
-          <div className="flex items-center gap-6">
-            <div className="relative w-72 group">
-            </div>
-          </div>
-
-          <div className="flex items-center gap-6">
-            {/* Minimalist SIMPRO Text */}
-            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
-              Simpro
-            </span>
-          </div>
-        </header>
+                   <div className="flex items-center gap-6">
+                     <div className="relative w-72 group">
+                     </div>
+                   </div>
+         
+                 <div className="flex items-center gap-6">
+             {/* KOMPONEN LONCENG BARU */}
+             <NotificationBell />
+             
+             <div className="h-8 w-[1px] bg-slate-200 mx-2" />
+         
+                   <div className="flex items-center gap-6">
+                     {/* Minimalist SIMPRO Text */}
+                     <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
+                       Simpro
+                     </span>
+                   </div>
+                   </div>
+                 </header>
 
         <div className="p-10 max-w-[1400px] mx-auto w-full">
           <header className="mb-10">

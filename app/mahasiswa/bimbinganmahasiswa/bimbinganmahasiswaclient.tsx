@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Sidebar from "@/components/sidebar";
+import NotificationBell from "@/components/notificationBell";
 import Link from "next/link";
 import {
   Bell,
@@ -36,6 +37,8 @@ export default function BimbinganMahasiswaClient() {
   const [activeTab, setActiveTab] = useState<"jadwal" | "riwayat">("jadwal");
   const [rows, setRows] = useState<BimbinganRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 5;
 
   // ================= FETCH DATA (Backend Logic Tetap) =================
   const fetchBimbingan = async () => {
@@ -98,10 +101,16 @@ export default function BimbinganMahasiswaClient() {
 
   useEffect(() => { fetchBimbingan(); }, [activeTab]);
 
-  const currentData = activeTab === "jadwal"
+// 🔥 1. FILTER DATA TERLEBIH DAHULU (Menghilangkan error variabel tidak ditemukan)
+  const filteredRows = activeTab === "jadwal"
     ? rows.filter(r => r.status !== "selesai" && r.status !== "revisi" && r.status !== "dibatalkan")
     : rows.filter(r => (r.feedback === "disetujui" || r.feedback === "revisi") && r.kehadiran === "hadir");
 
+  // 🔥 2. LOGIKA SLICING (Menghitung data yang tampil di halaman aktif)
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentData = filteredRows.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(filteredRows.length / itemsPerPage);
   return (
     <div className="flex min-h-screen bg-[#F4F7FE] font-sans text-slate-700">
       <Sidebar />
@@ -109,18 +118,25 @@ export default function BimbinganMahasiswaClient() {
       <main className="flex-1 ml-64 min-h-screen flex flex-col h-screen overflow-hidden">
         {/* HEADER - Glassmorphism Simplified */}
         <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
-          <div className="flex items-center gap-6">
-            <div className="relative w-72 group">
-            </div>
-          </div>
-
-          <div className="flex items-center gap-6">
-            {/* Minimalist SIMPRO Text */}
-            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
-              Simpro
-            </span>
-          </div>
-        </header>
+                  <div className="flex items-center gap-6">
+                    <div className="relative w-72 group">
+                    </div>
+                  </div>
+        
+                <div className="flex items-center gap-6">
+            {/* KOMPONEN LONCENG BARU */}
+            <NotificationBell />
+            
+            <div className="h-8 w-[1px] bg-slate-200 mx-2" />
+        
+                  <div className="flex items-center gap-6">
+                    {/* Minimalist SIMPRO Text */}
+                    <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
+                      Simpro
+                    </span>
+                  </div>
+                  </div>
+                </header>
 
         <div className="flex-1 overflow-y-auto p-10 custom-scrollbar">
           <div className="max-w-[1400px] mx-auto">
@@ -279,12 +295,31 @@ export default function BimbinganMahasiswaClient() {
 
               {/* PAGINATION */}
               <div className="p-10 bg-slate-50/30 border-t border-slate-50 flex justify-between items-center">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Total Log: {currentData.length} Sesi Terdata</p>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                  Menampilkan {indexOfFirstItem + 1} - {Math.min(indexOfLastItem, filteredRows.length)} dari {filteredRows.length} Sesi
+                </p>
+                
                 <div className="flex gap-2">
-                  <PaginationButton icon={<ChevronLeft size={18} />} />
-                  <PaginationButton label="1" active />
-                  <PaginationButton label="2" />
-                  <PaginationButton icon={<ChevronRight size={18} />} />
+                  <PaginationButton 
+                    icon={<ChevronLeft size={18} />} 
+                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                    disabled={currentPage === 1}
+                  />
+                  
+                  {[...Array(totalPages)].map((_, i) => (
+                    <PaginationButton 
+                      key={i} 
+                      label={(i + 1).toString()} 
+                      active={currentPage === i + 1}
+                      onClick={() => setCurrentPage(i + 1)}
+                    />
+                  ))}
+
+                  <PaginationButton 
+                    icon={<ChevronRight size={18} />} 
+                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                    disabled={currentPage === totalPages || totalPages === 0}
+                  />
                 </div>
               </div>
             </div>
@@ -295,12 +330,30 @@ export default function BimbinganMahasiswaClient() {
   );
 }
 
-// ================= HELPERS =================
-function PaginationButton({ label, icon, active = false }: { label?: string; icon?: React.ReactNode; active?: boolean; }) {
+// 🔥 UPDATE HELPER PAGINATION BUTTON AGAR BISA KLIK
+function PaginationButton({ 
+  label, 
+  icon, 
+  active = false, 
+  onClick, 
+  disabled = false 
+}: { 
+  label?: string; 
+  icon?: React.ReactNode; 
+  active?: boolean; 
+  onClick: () => void;
+  disabled?: boolean;
+}) {
   return (
-    <button className={`w-12 h-12 flex items-center justify-center rounded-[1.25rem] text-[10px] font-black transition-all shadow-md active:scale-90 ${
-      active ? "bg-blue-600 text-white shadow-blue-100 shadow-xl" : "bg-white text-slate-400 border border-slate-100 hover:border-blue-400 hover:text-blue-600"
-    }`}>
+    <button 
+      onClick={onClick}
+      disabled={disabled}
+      className={`w-12 h-12 flex items-center justify-center rounded-[1.25rem] text-[10px] font-black transition-all shadow-md active:scale-90 disabled:opacity-30 disabled:cursor-not-allowed ${
+        active 
+          ? "bg-blue-600 text-white shadow-blue-100 shadow-xl" 
+          : "bg-white text-slate-400 border border-slate-100 hover:border-blue-400 hover:text-blue-600"
+      }`}
+    >
       {label || icon}
     </button>
   );

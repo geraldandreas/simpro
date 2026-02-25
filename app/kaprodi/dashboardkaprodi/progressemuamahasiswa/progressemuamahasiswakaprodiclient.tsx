@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import NotificationBell from '@/components/notificationBell';
 import { mapStatusToUI } from "@/lib/mapStatusToUI";
 
 
@@ -48,46 +49,86 @@ export default function ProgresSemuaMahasiswaKaprodiClient() {
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState("Semua Status"); 
   const [searchTerm, setSearchTerm] = useState("");
-  
-  
 
-  // ================= FETCH DATA (Backend Logic Tetap) =================
   const fetchData = async () => {
     try {
       setLoading(true);
+
+      // 1. Fetch Data Proposals dengan relasi lengkap agar sinkron dengan Detail/Tendik
       const { data: proposals, error } = await supabase
         .from("proposals")
         .select(`
           id, judul, status,
           profiles ( nama, npm ),
-          thesis_supervisors ( profiles ( nama ) ),
-          seminar_requests ( tipe, status )
+          thesis_supervisors ( role, dosen_id, profiles ( nama ) ),
+          seminar_requests ( tipe, status, approved_by_p1, approved_by_p2, created_at ),
+          sidang_requests ( id, status ),
+          seminar_documents ( status ),
+          guidance_sessions ( 
+            dosen_id, 
+            kehadiran_mahasiswa, 
+            session_feedbacks ( status_revisi ) 
+          )
         `);
 
       if (error) throw error;
-      
-      
 
       const mapped: StudentProgress[] = (proposals || []).map((p: any) => {
-  const hasSeminar =
-    p.seminar_requests?.some(
-      (s: any) => s.tipe === "seminar"
-    ) ?? false;
+        // --- LOGIKA SINKRONISASI GLOBAL (IDENTIK DENGAN DETAILPROGRESTENDIK) ---
+        
+        // A. Ambil Seminar Request Terbaru (Mencegah data duplikat FALSE)
+        const allSeminarReqs = p.seminar_requests || [];
+        const activeSeminarReq = allSeminarReqs.sort((a: any, b: any) => 
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        )[0] || null;
 
-  const ui = mapStatusToUI({
-    proposalStatus: p.status,
-    hasSeminar,
-  });
+        // B. Hitung Berkas Tervalidasi
+        const docs = p.seminar_documents || [];
+        const verifiedDocsCount = docs.filter((d: any) => d.status === 'Lengkap').length;
 
-  return {
-    id: p.id,
-    nama: p.profiles?.nama ?? "-",
-    npm: p.profiles?.npm ?? "-",
-    judul: p.judul,
-    status: ui.label,          // 🔥 INI KUNCINYA
-    pembimbing: p.thesis_supervisors?.[0]?.profiles?.nama ?? "-",
-  };
-});
+        // C. Hitung Bimbingan P1 (Utama) & P2 (Pendamping)
+        let p1Count = 0;
+        let p2Count = 0;
+        const sessions = p.guidance_sessions || [];
+
+        p.thesis_supervisors?.forEach((sp: any) => {
+          const count = sessions.filter((s: any) => 
+            s.dosen_id === sp.dosen_id && 
+            s.kehadiran_mahasiswa === 'hadir' &&
+            s.session_feedbacks?.[0]?.status_revisi === "disetujui"
+          ).length || 0;
+
+          if (sp.role === "utama") p1Count = count;
+          else if (sp.role === "pendamping") p2Count = count;
+        });
+
+        // D. Tentukan Kelayakan (isEligible)
+        const approvedByAll = !!activeSeminarReq?.approved_by_p1 && !!activeSeminarReq?.approved_by_p2;
+        const isEligible = p1Count >= 10 && p2Count >= 10 && approvedByAll;
+
+        // E. Deteksi Data Sidang (RLS Safe Check)
+        const hasSidang = Array.isArray(p.sidang_requests) && p.sidang_requests.length > 0;
+
+        // F. Panggil Mapper Global agar Label & Warna Sinkron
+        const ui = mapStatusToUI({
+          proposalStatus: p.status,
+          hasSeminar: !!activeSeminarReq,
+          seminarStatus: activeSeminarReq?.status,
+          hasSidang: hasSidang,
+          uploadedDocsCount: docs.length,
+          verifiedDocsCount: verifiedDocsCount,
+          isEligible: isEligible, 
+        });
+
+        return {
+          id: p.id,
+          nama: p.profiles?.nama ?? "-",
+          npm: p.profiles?.npm ?? "-",
+          judul: p.judul,
+          status: ui.label, // Label sekarang sinkron total
+          pembimbing: p.thesis_supervisors?.find((s: any) => s.role === "utama")?.profiles?.nama ?? "-",
+        };
+      });
 
       setData(mapped);
     } catch (err) {
@@ -118,7 +159,6 @@ export default function ProgresSemuaMahasiswaKaprodiClient() {
       case "Proses Kesiapan Sidang": return "bg-blue-100 text-blue-700 border-blue-200"; 
       case "Seminar Proposal":
       case "Sidang Skripsi":
-      case "Lulus / Selesai": return "bg-emerald-100 text-emerald-700 border-emerald-200"; 
       default: return "bg-slate-100 text-slate-600 border-slate-200";
     }
   };
@@ -128,18 +168,26 @@ export default function ProgresSemuaMahasiswaKaprodiClient() {
       
       {/* --- HEADER - Glassmorphism --- */}
      <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
-          <div className="flex items-center gap-6">
-            <div className="relative w-72 group">
-            </div>
-          </div>
-
-          <div className="flex items-center gap-6">
-            {/* Minimalist SIMPRO Text */}
-            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
-              Simpro
-            </span>
-          </div>
-        </header>
+                     <div className="flex items-center gap-6">
+                       <div className="relative w-72 group">
+                       </div>
+                     </div>
+           
+                   <div className="flex items-center gap-6">
+               {/* KOMPONEN LONCENG BARU */}
+               <NotificationBell />
+               
+               <div className="h-8 w-[1px] bg-slate-200 mx-2" />
+           
+                     <div className="flex items-center gap-6">
+                       {/* Minimalist SIMPRO Text */}
+                       <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
+                         Simpro
+                       </span>
+                     </div>
+                     </div>
+                   </header>
+     
 
       {/* --- MAIN CONTENT --- */}
       <main className="flex-1 p-10 overflow-y-auto">

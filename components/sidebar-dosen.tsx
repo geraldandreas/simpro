@@ -21,7 +21,6 @@ const MENU_ITEMS = [
 
 const OTHER_ITEMS = [
   { label: "Settings", icon: Settings, href: "/settings" },
-  { label: "Help", icon: HelpCircle, href: "/help" },
 ];
 
 export default function SidebarDosen() {

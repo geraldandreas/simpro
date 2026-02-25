@@ -1,6 +1,7 @@
 "use client";
 
 import React, {useState, useEffect} from 'react';
+import NotificationBell from '@/components/notificationBell';
 import { 
   Bell, 
   Search, 
@@ -93,7 +94,9 @@ const fetchProposalPending = async () => {
 
 
 
-  const fetchMahasiswaBimbingan = async (uid: string) => {
+ // ================= FETCH LOGIC (SINKRON DENGAN GLOBAL) =================
+
+const fetchMahasiswaBimbingan = async (uid: string) => {
   try {
     const { data, error } = await supabase
       .from("thesis_supervisors")
@@ -101,7 +104,11 @@ const fetchProposalPending = async () => {
         proposal:proposals (
           id, status,
           mahasiswa:profiles ( nama, npm ),
-          seminar:seminar_requests ( id , status)
+          seminar:seminar_requests ( status, approved_by_p1, approved_by_p2, created_at ),
+          sidang:sidang_requests ( id ),
+          docs:seminar_documents ( status ),
+          supervisors:thesis_supervisors ( role, dosen_id ),
+          sessions:guidance_sessions ( dosen_id, kehadiran_mahasiswa, session_feedbacks ( status_revisi ) )
         )
       `)
       .eq("dosen_id", uid);
@@ -109,19 +116,53 @@ const fetchProposalPending = async () => {
     if (error) throw error;
 
     const mapped: MahasiswaBimbingan[] = (data || []).map((row: any) => {
-      const proposal = row.proposal;
-      const hasSeminar =
-  proposal?.seminar?.some((s: any) => s.status === "Disetujui") ?? false;
+      const p = row.proposal;
+      
+      // 1. Ambil Seminar Request Terbaru
+      const activeSeminar = p.seminar?.sort((a: any, b: any) => 
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      )[0] || null;
+      
+      // 2. Cek Data Sidang
+      const hasSidang = Array.isArray(p.sidang) && p.sidang.length > 0;
 
-      const ui = mapStatusToUI({
-        proposalStatus: proposal.status,
-        hasSeminar
+      // 3. Hitung Berkas Tervalidasi Tendik
+      const docs = p.docs || [];
+      const verifiedCount = docs.filter((d: any) => d.status === 'Lengkap').length;
+
+      // 4. Hitung Bimbingan P1 (Utama) & P2 (Pendamping)
+      let p1Count = 0;
+      let p2Count = 0;
+      p.supervisors?.forEach((sp: any) => {
+        const count = p.sessions?.filter((s: any) => 
+          s.dosen_id === sp.dosen_id && 
+          s.kehadiran_mahasiswa === 'hadir' &&
+          s.session_feedbacks?.[0]?.status_revisi === "disetujui"
+        ).length || 0;
+
+        if (sp.role === "utama") p1Count = count;
+        else if (sp.role === "pendamping") p2Count = count;
+      });
+
+      // 5. Kelayakan (IsEligible)
+      const approvedByAll = !!activeSeminar?.approved_by_p1 && !!activeSeminar?.approved_by_p2;
+      const isEligible = p1Count >= 10 && p2Count >= 10 && approvedByAll;
+
+      // 6. Panggil Mapper Global
+      const ui = mapStatusToUI({ 
+        proposalStatus: p.status, 
+        hasSeminar: !!activeSeminar,
+        seminarStatus: activeSeminar?.status,
+        hasSidang: hasSidang,
+        verifiedDocsCount: verifiedCount,
+        uploadedDocsCount: docs.length,
+        isEligible: isEligible
       });
 
       return {
-        proposal_id: proposal.id,
-        nama: proposal.mahasiswa.nama,
-        npm: proposal.mahasiswa.npm,
+        proposal_id: p.id,
+        nama: p.mahasiswa.nama,
+        npm: p.mahasiswa.npm,
         uiStatusLabel: ui.label,
         uiStatusColor: ui.color,
       };
@@ -132,7 +173,6 @@ const fetchProposalPending = async () => {
     console.error("❌ Gagal load mahasiswa bimbingan:", err);
   }
 };
-
  
 
   const fetchStats = async (uid: string) => {
@@ -192,18 +232,25 @@ useEffect(() => {
       
       {/* TOP HEADER - Glassmorphism Effect */}
      <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
-          <div className="flex items-center gap-6">
-            <div className="relative w-72 group">
-            </div>
-          </div>
-
-          <div className="flex items-center gap-6">
-            {/* Minimalist SIMPRO Text */}
-            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
-              Simpro
-            </span>
-          </div>
-        </header>
+               <div className="flex items-center gap-6">
+                 <div className="relative w-72 group">
+                 </div>
+               </div>
+     
+             <div className="flex items-center gap-6">
+         {/* KOMPONEN LONCENG BARU */}
+         <NotificationBell />
+         
+         <div className="h-8 w-[1px] bg-slate-200 mx-2" />
+     
+               <div className="flex items-center gap-6">
+                 {/* Minimalist SIMPRO Text */}
+                 <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
+                   Simpro
+                 </span>
+               </div>
+               </div>
+             </header>
 
       <main className="p-10 max-w-[1400px] w-full mx-auto">
         <div className="mb-10">

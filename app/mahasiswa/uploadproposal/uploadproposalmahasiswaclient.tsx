@@ -2,6 +2,8 @@
 
 import React, { useEffect, useState, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import { sendNotification } from "@/lib/notificationUtils";
+import NotificationBell from '@/components/notificationBell';
 import { supabase } from "@/lib/supabaseClient";
 import Sidebar from "@/components/sidebar";
 import { 
@@ -143,6 +145,34 @@ export default function UploadProposalMahasiswaClient() {
       }).select().single();
 
       if (insertError) throw insertError;
+
+      // 1. Dapatkan ID Kaprodi secara dinamis
+const { data: kaprodi } = await supabase
+  .from('profiles')
+  .select('id')
+  .eq('role', 'kaprodi')
+  .maybeSingle();
+
+// 2. Kirim notifikasi jika Kaprodi ditemukan
+if (kaprodi) {
+  const receiverId = kaprodi.id;
+
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const mhsNama =
+    user?.user_metadata?.full_name ||
+    user?.email ||
+    "Seorang mahasiswa";
+
+  await sendNotification(
+    receiverId,
+    "Usulan Judul Baru",
+    `${mhsNama} telah mengajukan judul proposal baru: "${judulSkripsi}".`
+  );
+}
+
+
+
       setProposal({ ...proposal, storagePath, id: data.id, status: data.status, is_locked: true });
       alert("✅ Proposal berhasil disimpan dan dikunci!");
     } catch (error: any) {
@@ -209,18 +239,25 @@ export default function UploadProposalMahasiswaClient() {
       <Sidebar />
       <main className="flex-1 ml-64 transition-all duration-300">
        <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
-          <div className="flex items-center gap-6">
-            <div className="relative w-72 group">
-            </div>
-          </div>
-
-          <div className="flex items-center gap-6">
-            {/* Minimalist SIMPRO Text */}
-            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
-              Simpro
-            </span>
-          </div>
-        </header>
+                 <div className="flex items-center gap-6">
+                   <div className="relative w-72 group">
+                   </div>
+                 </div>
+       
+               <div className="flex items-center gap-6">
+           {/* KOMPONEN LONCENG BARU */}
+           <NotificationBell />
+           
+           <div className="h-8 w-[1px] bg-slate-200 mx-2" />
+       
+                 <div className="flex items-center gap-6">
+                   {/* Minimalist SIMPRO Text */}
+                   <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
+                     Simpro
+                   </span>
+                 </div>
+                 </div>
+               </header>
 
         <div className="p-10 max-w-[1400px] mx-auto">
           <div className="mb-10">

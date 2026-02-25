@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 // ShieldLock diganti menjadi ShieldCheck
 import { Bell, Search, Trash2, LogOut, Check, User, ShieldCheck, AlertCircle, Phone, Mail, IdCard, Lock } from "lucide-react"; 
+import NotificationBell from '@/components/notificationBell';
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
 
@@ -145,18 +146,25 @@ export default function SettingsPage() {
         
         {/* HEADER - Glassmorphism */}
        <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
-          <div className="flex items-center gap-6">
-            <div className="relative w-72 group">
-            </div>
-          </div>
-
-          <div className="flex items-center gap-6">
-            {/* Minimalist SIMPRO Text */}
-            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
-              Simpro
-            </span>
-          </div>
-        </header>
+                     <div className="flex items-center gap-6">
+                       <div className="relative w-72 group">
+                       </div>
+                     </div>
+           
+                   <div className="flex items-center gap-6">
+               {/* KOMPONEN LONCENG BARU */}
+               <NotificationBell />
+               
+               <div className="h-8 w-[1px] bg-slate-200 mx-2" />
+           
+                     <div className="flex items-center gap-6">
+                       {/* Minimalist SIMPRO Text */}
+                       <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
+                         Simpro
+                       </span>
+                     </div>
+                     </div>
+                   </header>
 
         <div className="p-10 max-w-7xl mx-auto w-full">
           <header className="mb-10">
@@ -209,39 +217,7 @@ export default function SettingsPage() {
                 </div>
               </section>
 
-              {/* SECTION: GANTI KATA SANDI */}
-              <section className="bg-white rounded-[2.5rem] border border-white shadow-xl shadow-slate-200/50 overflow-hidden">
-                <div className="p-8 border-b border-slate-50 bg-slate-50/30 flex items-center gap-3">
-                  <div className="p-2.5 bg-indigo-600 rounded-xl text-white shadow-lg shadow-indigo-200">
-                    <Lock size={20} />
-                  </div>
-                  <h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Keamanan</h2>
-                </div>
-
-                <div className="p-10">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-                    <InputGroup label="Kata Sandi Baru" type="password" value={password} onChange={setPassword} placeholder="••••••••" />
-                    <InputGroup label="Konfirmasi Sandi" type="password" value={confirmPassword} onChange={setConfirmPassword} placeholder="••••••••" />
-                  </div>
-
-                  <div className="p-6 bg-indigo-50 border border-indigo-100 rounded-2xl flex gap-4">
-                    <AlertCircle className="text-indigo-400 shrink-0" size={20} />
-                    <p className="text-[11px] font-medium text-indigo-700 leading-relaxed italic">
-                      Gunakan minimal 6 karakter kombinasi angka dan huruf untuk keamanan yang lebih baik.
-                    </p>
-                  </div>
-
-                  <div className="flex justify-end mt-10">
-                    <button
-                      onClick={handleChangePassword}
-                      disabled={savingPass}
-                      className="bg-indigo-600 hover:bg-indigo-700 text-white px-10 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-indigo-100 transition-all active:scale-95 disabled:opacity-70"
-                    >
-                      {savingPass ? "Memproses..." : "Ubah Kata Sandi"}
-                    </button>
-                  </div>
-                </div>
-              </section>
+          
 
             </div>
 

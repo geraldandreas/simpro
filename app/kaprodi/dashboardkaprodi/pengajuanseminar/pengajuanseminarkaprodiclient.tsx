@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import NotificationBell from '@/components/notificationBell';
 import { Search, Bell, CalendarCheck, User, BookOpen, ArrowRight, LayoutDashboard } from 'lucide-react';
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
@@ -41,8 +42,10 @@ export default function PengajuanSeminarKaprodiClient() {
               )
             )
           `)
-          .eq('tipe', 'seminar')
-          .order('created_at', { ascending: false });
+          .eq('status', 'Menunggu Persetujuan') // Data baru muncul jika status SUDAH diubah mahasiswa
+          .eq('approved_by_p1', true)           // Dan P1 sudah ACC
+          .eq('approved_by_p2', true)          // Dan P2 sudah ACC
+      .order('created_at', { ascending: false });
 
         if (error) throw error;
         setStudents(data);
@@ -60,19 +63,27 @@ export default function PengajuanSeminarKaprodiClient() {
   return (
     <div className="min-h-screen bg-[#F4F7FE] font-sans text-slate-700">
       
-     <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
-          <div className="flex items-center gap-6">
-            <div className="relative w-72 group">
-            </div>
-          </div>
-
-          <div className="flex items-center gap-6">
-            {/* Minimalist SIMPRO Text */}
-            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
-              Simpro
-            </span>
-          </div>
-        </header>
+      <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
+                          <div className="flex items-center gap-6">
+                            <div className="relative w-72 group">
+                            </div>
+                          </div>
+                
+                        <div className="flex items-center gap-6">
+                    {/* KOMPONEN LONCENG BARU */}
+                    <NotificationBell />
+                    
+                    <div className="h-8 w-[1px] bg-slate-200 mx-2" />
+                
+                          <div className="flex items-center gap-6">
+                            {/* Minimalist SIMPRO Text */}
+                            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
+                              Simpro
+                            </span>
+                          </div>
+                          </div>
+                        </header>
+          
 
       {/* --- MAIN CONTENT --- */}
       <main className="p-10 max-w-[1400px] mx-auto w-full">
@@ -107,7 +118,7 @@ export default function PengajuanSeminarKaprodiClient() {
                 <tr className="bg-slate-50/50 text-[11px] uppercase tracking-[0.15em] text-slate-400 font-black border-b border-slate-100">
                   <th className="px-8 py-6 w-[22%]">Mahasiswa</th>
                   <th className="px-8 py-6 w-[15%] text-center">NPM</th>
-                  <th className="px-8 py-6 w-[35%]">Judul Seminar</th>
+                  <th className="px-8 py-6 w-[35%]">Judul Skripsi</th>
                   <th className="px-8 py-6 w-[13%] text-center">Bidang</th>
                   <th className="px-8 py-6 w-[15%] text-center">Tindakan</th>
                 </tr>

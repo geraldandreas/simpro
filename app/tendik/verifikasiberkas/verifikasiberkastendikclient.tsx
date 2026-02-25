@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from "react";
 import SidebarTendik from "@/components/sidebar-tendik";
+import NotificationBell from '@/components/notificationBell';
+import { sendNotification } from "@/lib/notificationUtils";
 import { supabase } from "@/lib/supabaseClient";
 import {
   Search,
@@ -33,13 +35,9 @@ interface VerificationItem {
 // ================= HELPER =================
 
 const DOC_LABEL: Record<string, string> = {
-  berita_acara_bimbingan: "Unggah Berita Acara Bimbingan",
-  transkrip_nilai: "Unggah Transkrip Nilai",
-  matriks_perbaikan: "Unggah Matriks Perbaikan",
-  toefl: "Unggah Sertifikat TOEFL",
-  print_jurnal: "Unggah Print Jurnal",
-  sertifikat_publikasi: "Unggah Sertifikat Publikasi",
-  test_manual: "Unggah Dokumen Manual",
+  form_layak_dan_jadwal: "Form Layak Seminar & Pengajuan Jadwal",
+  nilai_magang_gabungan: "Form Nilai Magang (Dosen Wali & Lapangan)",
+  bukti_serah_magang: "Bukti Penyerahan Laporan Magang",
 };
 
 // ================= PATH NORMALIZER =================
@@ -205,57 +203,94 @@ export default function VerifikasiBerkasTendikClient() {
   };
 
   const handleApprove = async (id: string) => {
-    const confirm = window.confirm("Yakin ingin memverifikasi dokumen ini?");
-    if (!confirm) return;
+  const confirm = window.confirm("Yakin ingin memverifikasi dokumen ini?");
+  if (!confirm) return;
 
-    try {
-      const { data: auth } = await supabase.auth.getUser();
+  try {
+    const { data: auth } = await supabase.auth.getUser();
 
-      const { error } = await supabase
-        .from("seminar_documents")
-        .update({
-          status: "Lengkap",
-          verified_at: new Date().toISOString(),
-          verified_by: auth?.user?.id || null,
-        })
-        .eq("id", id);
+    // 1. Ambil data dokumen sebelum update
+    const { data: docInfo } = await supabase
+      .from("seminar_documents")
+      .select("nama_dokumen, proposal:proposal_id(user_id)")
+      .eq("id", id)
+      .single();
 
-      if (error) throw error;
+    const { error } = await supabase
+      .from("seminar_documents")
+      .update({
+        status: "Lengkap",
+        verified_at: new Date().toISOString(),
+        verified_by: auth?.user?.id || null,
+      })
+      .eq("id", id);
 
-      await fetchDocuments();
-      setActiveDropdownId(null);
-    } catch (err: any) {
-      alert("❌ Gagal memverifikasi dokumen");
-      console.error(err.message);
+    if (error) throw error;
+
+    // 🔥 NOTIFIKASI SINKRON DENGAN DETAIL PROGRES
+    const studentId = (docInfo?.proposal as any)?.user_id;
+    const docNameFromDb = docInfo?.nama_dokumen || "";
+    const docLabel = DOC_LABEL[docNameFromDb] || docNameFromDb || "Berkas Seminar";
+
+    if (studentId) {
+      await sendNotification(
+        studentId,
+        "Berkas Terverifikasi",
+        `Dokumen "${docLabel}" Anda telah dinyatakan LENGKAP oleh Tendik.`
+      );
     }
-  };
 
-  const handleReject = async (id: string) => {
-    const reason = window.prompt("Masukkan alasan penolakan:");
-    if (!reason) return;
+    await fetchDocuments();
+    setActiveDropdownId(null);
+  } catch (err: any) {
+    alert("❌ Gagal memverifikasi dokumen");
+  }
+};
 
-    try {
-      const { data: auth } = await supabase.auth.getUser();
+const handleReject = async (id: string) => {
+  const reason = window.prompt("Masukkan alasan penolakan:");
+  if (!reason) return;
 
-      const { error } = await supabase
-        .from("seminar_documents")
-        .update({
-          status: "Ditolak",
-          verified_at: new Date().toISOString(),
-          verified_by: auth?.user?.id || null,
-        })
-        .eq("id", id);
+  try {
+    const { data: auth } = await supabase.auth.getUser();
 
-      if (error) throw error;
+    const { data: docInfo } = await supabase
+      .from("seminar_documents")
+      .select("nama_dokumen, proposal:proposal_id(user_id)")
+      .eq("id", id)
+      .single();
 
-      await fetchDocuments();
-      setActiveDropdownId(null);
-    } catch (err: any) {
-      alert("❌ Gagal menolak dokumen");
-      console.error(err.message);
+    const { error } = await supabase
+      .from("seminar_documents")
+      .update({
+        status: "Ditolak",
+        verified_at: new Date().toISOString(),
+        verified_by: auth?.user?.id || null,
+        catatan: reason 
+      })
+      .eq("id", id);
+
+    if (error) throw error;
+
+    // 🔥 NOTIFIKASI PENOLAKAN SINKRON DENGAN DETAIL PROGRES
+    const studentId = (docInfo?.proposal as any)?.user_id;
+    const docNameFromDb = docInfo?.nama_dokumen || "";
+    const docLabel = DOC_LABEL[docNameFromDb] || docNameFromDb || "Berkas Seminar";
+
+    if (studentId) {
+      await sendNotification(
+        studentId,
+        "Berkas Perlu Perbaikan",
+        `Dokumen "${docLabel}" Anda ditolak oleh Tendik. Alasan: ${reason}`
+      );
     }
-  };
 
+    await fetchDocuments();
+    setActiveDropdownId(null);
+  } catch (err: any) {
+    alert("❌ Gagal menolak dokumen");
+  }
+};
   // ================= RENDER =================
 
   return (
@@ -265,24 +300,25 @@ export default function VerifikasiBerkasTendikClient() {
       <main className="flex-1 ml-64 min-h-screen flex flex-col">
         {/* HEADER */}
         <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
-                          <div className="flex items-center gap-6">
-                            <div className="relative w-72 group">
-                              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" size={16} />
-                              <input 
-                                type="text" 
-                                placeholder="Cari data..." 
-                                className="w-full pl-10 pr-4 py-2 bg-slate-100 border-transparent border focus:bg-white focus:border-blue-400 rounded-xl text-xs outline-none transition-all shadow-inner uppercase tracking-widest"
-                              />
-                            </div>
-                          </div>
-                
-                          <div className="flex items-center gap-6">
-                            {/* Minimalist SIMPRO Text */}
-                            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
-                              Simpro
-                            </span>
-                          </div>
-                        </header>
+                         <div className="flex items-center gap-6">
+                           <div className="relative w-72 group">
+                           </div>
+                         </div>
+               
+                       <div className="flex items-center gap-6">
+                   {/* KOMPONEN LONCENG BARU */}
+                   <NotificationBell />
+                   
+                   <div className="h-8 w-[1px] bg-slate-200 mx-2" />
+               
+                         <div className="flex items-center gap-6">
+                           {/* Minimalist SIMPRO Text */}
+                           <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
+                             Simpro
+                           </span>
+                         </div>
+                         </div>
+                       </header>
 
         {/* CONTENT */}
         <div className="p-8">

@@ -60,11 +60,6 @@ export default function SidebarTendik() {
       href: "/tendik/dashboardtendik",
     },
     {
-      label: "Manajemen Skripsi",
-      icon: <FileUp size={18} />,
-      href: "/tendik/manajemenskripsi",
-    },
-    {
       label: "Verifikasi Berkas",
       icon: <FileText size={18} />,
       href: "/tendik/verifikasiberkas",

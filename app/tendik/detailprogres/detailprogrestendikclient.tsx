@@ -1,11 +1,13 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { sendNotification } from "@/lib/notificationUtils";
+import NotificationBell from '@/components/notificationBell';
 import { mapStatusToUI } from "@/lib/mapStatusToUI";
 import { 
-  Search, Bell, ArrowLeft, FileText, 
-  CheckCircle, Eye, Check, X, Download, 
-  ShieldCheck, Clock, Layers, LayoutDashboard,
+  ArrowLeft, FileText, 
+  CheckCircle, Eye, Download, 
+  ShieldCheck, Clock, LayoutDashboard,
   MoreHorizontal
 } from "lucide-react";
 import { useSearchParams, useRouter } from "next/navigation";
@@ -39,23 +41,9 @@ interface GuidanceSession {
 }
 
 const REQUIRED_DOCS = [
-  { id: 'berita_acara_bimbingan', label: "Berita Acara Bimbingan" },
-  { id: 'transkrip_nilai', label: "Transkrip Nilai" },
-  { id: 'matriks_perbaikan', label: "Formulir Matriks Perbaikan Skripsi" },
-  { id: 'toefl', label: "Sertifikat TOEFL" },
-  { id: 'print_jurnal', label: "Print Out Jurnal Skripsi" },
-  { id: 'sertifikat_publikasi', label: "Sertifikat Publikasi / Jurnal" },
-  { id: 'pengajuan_sidang', label: "Formulir Pengajuan Sidang" },
-  { id: 'bukti_bayar', label: "Bukti Pembayaran Registrasi" },
-  { id: 'bebas_pus_univ', label: "Bebas Pinjaman Perpustakaan Univ" },
-  { id: 'bebas_pus_fak', label: "Bebas Pinjaman Perpustakaan Fak" },
-  { id: 'bukti_pengajuan_judul', label: "Bukti pengajuan Topik/Judul" },
-  { id: 'skpi', label: "SKPI" },
-  { id: 'biodata_sidang', label: "Biodata Sidang" },
-  { id: 'foto', label: "Foto Hitam Putih Cerah" },
-  { id: 'pengantar_ijazah', label: "Surat Pengantar Ijazah" },
-  { id: 'print_skripsi', label: "Print Out Skripsi 3 buah" },
-  { id: 'flyer', label: "FLYER Skripsi" },
+  { id: 'form_layak_dan_jadwal', label: "Form Layak Seminar & Pengajuan Jadwal" },
+  { id: 'nilai_magang_gabungan', label: "Form Nilai Magang (Dosen Wali & Lapangan)" },
+  { id: 'bukti_serah_magang', label: "Bukti Penyerahan Laporan Magang" },
 ];
 
 const normalizeStoragePath = (rawPath: string) => {
@@ -77,19 +65,38 @@ export default function DetailProgresTendikClient() {
   const [activeDropdownId, setActiveDropdownId] = useState<string | null>(null);
 
   const fetchData = async () => {
-    if (!proposalId) return;
-    try {
-      const { data: propData, error: propError } = await supabase
-        .from("proposals")
-        .select(`
-          id, judul, status,
-          profiles!proposals_user_id_fkey (nama, npm), 
-          seminar_requests ( tipe, status )
-        `)
-        .eq("id", proposalId)
-        .single();
+  if (!proposalId) return;
+  try {
+    const { data: propData, error: propError } = await supabase
+  .from("proposals")
+  .select(`
+    id, judul, status,
+    profiles!proposals_user_id_fkey (nama, npm), 
+    seminar_requests ( tipe, status, approved_by_p1, approved_by_p2 ),
+    sidang_requests ( status ) 
+  `)
+      .eq("id", proposalId)
+      .single();
 
-      if (propError) throw propError;
+    if (propError) throw propError;
+
+    const { data: sidangData } = await supabase
+  .from("sidang_requests")
+  .select("id, status")
+  .eq("proposal_id", proposalId) // Pastikan ID ini cocok dengan Vera
+  .maybeSingle();
+
+const hasSidangFound = !!sidangData; //
+
+    console.log("LOG STATUS SIDANG VERA:", {
+  rawSidangData: propData.sidang_requests,
+  hasSidangFound: hasSidangFound
+});
+
+ const allSeminarReqs = propData.seminar_requests || [];
+const activeSeminarReq = allSeminarReqs.sort((a: any, b: any) => 
+  new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+)[0] || null;
       
       const profile = Array.isArray(propData.profiles) ? propData.profiles[0] : propData.profiles;
       setStudent({
@@ -99,32 +106,64 @@ export default function DetailProgresTendikClient() {
         user: { nama: profile?.nama || "Tanpa Nama", npm: profile?.npm || "-" }
       });
 
-      // 1. Fetch Berkas
-      const { data: docData } = await supabase.from("seminar_documents").select("*").eq("proposal_id", proposalId);
-      const currentDocs = docData || [];
-      setDocuments(currentDocs);
 
-      // ================= LOGIKA TIMELINE DINAMIS =================
-     const hasSeminar =
-  propData.seminar_requests?.some((s: any) => s.tipe === "seminar") ?? false;
+// 1. Fetch Berkas
+    const { data: docData } = await supabase.from("seminar_documents").select("*").eq("proposal_id", proposalId);
+    const currentDocs = docData || [];
+    setDocuments(currentDocs);
+
+    // 🔥 HITUNG VARIABEL UNTUK MAPPER
+   const { data: sessions } = await supabase.from("guidance_sessions")
+      .select("dosen_id, session_feedbacks(status_revisi)")
+      .eq("proposal_id", proposalId).eq("kehadiran_mahasiswa", "hadir");
+
+    const { data: supervisors } = await supabase.from("thesis_supervisors")
+      .select("role, dosen_id").eq("proposal_id", proposalId);
+let p1Count = 0;
+let p2Count = 0;
+supervisors?.forEach((sp: any) => {
+  const count = sessions?.filter(s => 
+    s.dosen_id === sp.dosen_id && s.session_feedbacks?.[0]?.status_revisi === "disetujui"
+  ).length || 0;
+
+  if (sp.role === "utama") p1Count = count;
+  else if (sp.role === "pendamping") p2Count = count;
+});
+
+const approvedByAll = !!activeSeminarReq?.approved_by_p1 && !!activeSeminarReq?.approved_by_p2;
+const isEligible = p1Count >= 10 && p2Count >= 10 && approvedByAll;
 
 const ui = mapStatusToUI({
   proposalStatus: propData.status,
-  hasSeminar,
+  hasSeminar: !!activeSeminarReq,
+  seminarStatus: activeSeminarReq?.status,
+  hasSidang: hasSidangFound, 
+  uploadedDocsCount: currentDocs.length,
+  verifiedDocsCount: currentDocs.filter(d => d.status === 'Lengkap').length,
+  isEligible: isEligible, 
 });
 
 setTahap(ui.label);
 
       // 2. Fetch Bimbingan
       const { data: bimData } = await supabase
-        .from("guidance_sessions")
-        .select(`id, sesi_ke, tanggal, dosen:profiles!guidance_sessions_dosen_id_fkey (nama)`)
-        .eq("proposal_id", proposalId)
-        .order("tanggal", { ascending: false });
+  .from("guidance_sessions")
+  .select(`
+    id, sesi_ke, tanggal, kehadiran_mahasiswa,
+    dosen:profiles!guidance_sessions_dosen_id_fkey (nama),
+    session_feedbacks!inner (status_revisi)
+  `)
+  .eq("proposal_id", proposalId)
+  .eq("kehadiran_mahasiswa", "hadir") // Filter Kehadiran
+  .neq("session_feedbacks.status_revisi", "revisi") // Filter hanya yang sudah di-ACC
+  .order("sesi_ke", { ascending: false });
 
-      setBimbingan((bimData || []).map((b: any) => ({
-        id: b.id, sesi_ke: b.sesi_ke, tanggal: b.tanggal, dosen_nama: b.dosen?.nama || "-"
-      })));
+setBimbingan((bimData || []).map((b: any) => ({
+  id: b.id, 
+  sesi_ke: b.sesi_ke, 
+  tanggal: b.tanggal, 
+  dosen_nama: b.dosen?.nama || "-"
+})));
 
     } catch (err) { console.error(err); } finally { setLoading(false); }
   };
@@ -156,20 +195,45 @@ setTahap(ui.label);
     } catch { alert("Gagal memproses berkas."); } finally { setActiveDropdownId(null); }
   };
 
-  const handleVerify = async (docId: string, newStatus: string) => {
-    if (!confirm(`Konfirmasi verifikasi dokumen?`)) return;
-    setProcessingDoc(docId);
-    try {
-      const { data: auth } = await supabase.auth.getUser();
-      await supabase.from('seminar_documents').update({ 
-        status: newStatus, verified_at: new Date().toISOString(), verified_by: auth.user?.id 
-      }).eq('id', docId);
-      await fetchData(); 
-    } catch (e) { alert("Gagal update."); } finally { setProcessingDoc(null); setActiveDropdownId(null); }
-  };
+ const handleVerify = async (docId: string, newStatus: string) => {
+  if (!confirm(`Konfirmasi verifikasi dokumen?`)) return;
+  setProcessingDoc(docId);
+  try {
+    const { data: auth } = await supabase.auth.getUser();
+    
+    // 1. Cari data dokumen yang sedang diproses dari state documents
+    const currentDoc = documents.find(d => d.id === docId);
+    
+    // 2. Cari label aslinya dari REQUIRED_DOCS berdasarkan nama_dokumen
+    const docLabel = REQUIRED_DOCS.find(d => d.id === currentDoc?.nama_dokumen)?.label || "Berkas Seminar";
 
-  const validCount = documents.filter(d => d.status === 'Lengkap').length;
-  const progressPercent = Math.round((validCount / REQUIRED_DOCS.length) * 100);
+    await supabase.from('seminar_documents').update({ 
+      status: newStatus, verified_at: new Date().toISOString(), verified_by: auth.user?.id 
+    }).eq('id', docId);
+
+    // 🔥 NOTIFIKASI SEKARANG MENGGUNAKAN NAMA BERKAS YANG BENAR
+    const title = newStatus === 'Lengkap' ? "Berkas Terverifikasi" : "Berkas Ditolak";
+    const message = newStatus === 'Lengkap' 
+      ? `Dokumen "${docLabel}" Anda telah dinyatakan LENGKAP.` 
+      : `Dokumen "${docLabel}" Anda DITOLAK. Silakan unggah kembali berkas yang benar.`;
+
+    const { data: proposal } = await supabase.from('proposals').select('user_id').eq('id', proposalId).single();
+    
+    if (proposal?.user_id) {
+      await sendNotification(proposal.user_id, title, message);
+    }
+
+    await fetchData(); 
+  } catch (e) { 
+    alert("Gagal update."); 
+  } finally { 
+    setProcessingDoc(null); 
+    setActiveDropdownId(null); 
+  }
+};
+
+ const validCount = documents.filter(d => d.status === 'Lengkap').length;
+const progressPercent = Math.round((validCount / REQUIRED_DOCS.length) * 100);
 
   if (loading) return <div className="flex h-screen items-center justify-center bg-[#F4F7FE] text-blue-600 font-black animate-pulse uppercase tracking-[0.3em]">Loading System...</div>;
 
@@ -179,34 +243,50 @@ setTahap(ui.label);
 
       <div className="flex-1 ml-64 flex flex-col h-full">
         {/* Header Tetap Sama */}
-          <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
-                          <div className="flex items-center gap-6">
-                            <div className="relative w-72 group">
-                            </div>
-                          </div>
-                
-                          <div className="flex items-center gap-6">
-                            {/* Minimalist SIMPRO Text */}
-                            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
-                              Simpro
-                            </span>
-                          </div>
-                        </header>
+           <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
+                                        <div className="flex items-center gap-6">
+                                          <div className="relative w-72 group">
+                                          </div>
+                                        </div>
+                              
+                                      <div className="flex items-center gap-6">
+                                  {/* KOMPONEN LONCENG BARU */}
+                                  <NotificationBell />
+                                  
+                                  <div className="h-8 w-[1px] bg-slate-200 mx-2" />
+                              
+                                        <div className="flex items-center gap-6">
+                                          {/* Minimalist SIMPRO Text */}
+                                          <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
+                                            Simpro
+                                          </span>
+                                        </div>
+                                        </div>
+                                      </header>
 
         <main className="flex-1 p-10 overflow-y-auto custom-scrollbar">
+
+          <div className="mb-6">
+            <button 
+              onClick={() => router.back()} 
+              className="w-12 h-12 bg-white border border-slate-200 rounded-2xl flex items-center justify-center text-slate-400 hover:text-blue-600 hover:border-blue-100 transition-all shadow-sm active:scale-95"
+            >
+              <ArrowLeft size={20} />
+            </button>
+          </div>
+
           {/* Profile Card Tetap Sama */}
           <div className="mb-12 flex flex-col lg:flex-row lg:items-end justify-between gap-6">
             <div>
               <h1 className="text-4xl font-black text-slate-800 tracking-tight leading-none mb-4">{student?.user.nama}</h1>
               <div className="flex items-center gap-4 text-slate-500">
-                <span className="px-3 py-1 bg-white rounded-lg border border-slate-200 text-[10px] font-black tracking-widest">{student?.user.npm}</span>
-                <span className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-blue-600"><Layers size={14}/> Mahasiswa Akhir</span>
+                <span className="px-3 py-1 bg-white rounded-lg border border-slate-200 text-[10px] font-black tracking-widest">{student?.user.npm}</span> 
               </div>
             </div>
             <div className="bg-white p-6 rounded-[2rem] border border-white shadow-xl shadow-slate-200/50 flex-1 max-w-2xl relative overflow-hidden group">
               <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><FileText size={80}/></div>
               <p className="text-[10px] font-black text-blue-600 mb-2 tracking-[0.2em]">Judul Skripsi Terdaftar</p>
-              <h2 className="text-lg font-black text-slate-800 leading-tight italic font-serif normal-case">"{student?.judul}"</h2>
+              <h2 className="text-lg font-black text-slate-800 leading-tight  font-serif normal-case">"{student?.judul}"</h2>
             </div>
           </div>
 

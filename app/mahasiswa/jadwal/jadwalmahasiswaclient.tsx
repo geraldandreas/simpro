@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Sidebar from "@/components/sidebar";
+import NotificationBell from '@/components/notificationBell';
 import { supabase } from "@/lib/supabaseClient";
 import {
   Calendar,
@@ -100,24 +101,31 @@ export default function JadwalMahasiswaClient() {
       <Sidebar />
 
       <main className="flex-1 ml-64 flex flex-col h-screen overflow-y-auto custom-scrollbar uppercase tracking-tighter">
-         <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
-          <div className="flex items-center gap-6">
-            <div className="relative w-72 group">
-            </div>
-          </div>
-
-          <div className="flex items-center gap-6">
-            {/* Minimalist SIMPRO Text */}
-            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
-              Simpro
-            </span>
-          </div>
-        </header>
+        <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
+                  <div className="flex items-center gap-6">
+                    <div className="relative w-72 group">
+                    </div>
+                  </div>
+        
+                <div className="flex items-center gap-6">
+            {/* KOMPONEN LONCENG BARU */}
+            <NotificationBell />
+            
+            <div className="h-8 w-[1px] bg-slate-200 mx-2" />
+        
+                  <div className="flex items-center gap-6">
+                    {/* Minimalist SIMPRO Text */}
+                    <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
+                      Simpro
+                    </span>
+                  </div>
+                  </div>
+                </header>
 
         <div className="p-10 max-w-7xl mx-auto w-full">
           <header className="mb-10">
             <h1 className="text-3xl font-black text-slate-800 tracking-tight leading-none uppercase">Jadwal Seminar & Sidang</h1>
-            <p className="text-slate-500 font-medium mt-3 tracking-normal normal-case italic font-serif">Status penjadwalan akademik Anda secara real-time.</p>
+            <p className="text-slate-500 font-medium mt-3 tracking-normal normal-case font-serif">Status penjadwalan akademik Anda secara real-time.</p>
           </header>
 
           {loading ? (

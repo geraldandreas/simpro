@@ -1,10 +1,12 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import NotificationBell from '@/components/notificationBell';
 import { 
   Search, Bell, User, ChevronDown, FileText, ArrowLeft, Calendar, Clock, MapPin, ShieldCheck, Download
 } from "lucide-react";
 import Link from "next/link";
+import { sendNotification } from "@/lib/notificationUtils";
 import { useSearchParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -40,7 +42,7 @@ export default function PenjadwalanSeminarKaprodiClient() {
           .select(`
             id,
             proposal:proposals (
-              id, judul, file_path,
+              id, judul, file_path, user_id,
               user:profiles(nama, npm),
               supervisors:thesis_supervisors(
                 role,
@@ -154,6 +156,28 @@ export default function PenjadwalanSeminarKaprodiClient() {
 
     if (updateError) throw updateError;
 
+  const proposalData = Array.isArray(studentData?.proposal) 
+      ? studentData.proposal[0] 
+      : studentData?.proposal;
+      
+const studentId = proposalData?.user_id || proposalData?.user?.id;
+
+if (studentId) {
+  // Format tanggal untuk pesan notifikasi
+  const formattedDate = new Date(tanggal).toLocaleDateString('id-ID', { 
+    day: 'numeric', month: 'long', year: 'numeric' 
+  });
+
+  await sendNotification(
+    studentId,
+    "Jadwal Seminar Ditetapkan",
+    `Jadwal seminar Anda telah ditetapkan pada ${formattedDate} pukul ${jam} WIB di ${ruangan}.`
+  );
+  console.log("✅ Notifikasi terkirim ke:", studentId);
+} else {
+  console.error("❌ Gagal mengirim notifikasi: studentId tidak ditemukan", studentData.proposal);
+}
+
     alert("✅ Jadwal seminar berhasil ditetapkan!");
     router.push('/kaprodi/dashboardkaprodi/pengajuanseminar');
   } catch (err: any) {
@@ -176,19 +200,26 @@ export default function PenjadwalanSeminarKaprodiClient() {
     <div className="min-h-screen bg-[#F4F7FE] flex flex-col font-sans text-slate-700">
       
       {/* --- HEADER --- */}
-      <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
-          <div className="flex items-center gap-6">
-            <div className="relative w-72 group">
-            </div>
-          </div>
-
-          <div className="flex items-center gap-6">
-            {/* Minimalist SIMPRO Text */}
-            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
-              Simpro
-            </span>
-          </div>
-        </header>
+       <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
+                                      <div className="flex items-center gap-6">
+                                        <div className="relative w-72 group">
+                                        </div>
+                                      </div>
+                            
+                                    <div className="flex items-center gap-6">
+                                {/* KOMPONEN LONCENG BARU */}
+                                <NotificationBell />
+                                
+                                <div className="h-8 w-[1px] bg-slate-200 mx-2" />
+                            
+                                      <div className="flex items-center gap-6">
+                                        {/* Minimalist SIMPRO Text */}
+                                        <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
+                                          Simpro
+                                        </span>
+                                      </div>
+                                      </div>
+                                    </header>
 
       {/* --- MAIN CONTENT --- */}
       <main className="flex-1 p-10 max-w-[1400px] mx-auto w-full">

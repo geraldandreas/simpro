@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import { sendNotification } from "@/lib/notificationUtils";
 import { supabase } from "@/lib/supabaseClient";
 import Sidebar from "@/components/sidebar";
 import { 
@@ -64,7 +65,7 @@ export default function DetailBimbinganMahasiswaClient() {
         const { data: sessionData, error: sessionError } = await supabase
           .from("guidance_sessions")
           .select(`
-            id, sesi_ke, tanggal, jam, keterangan, metode, status,
+            id, sesi_ke, tanggal, jam, keterangan, metode, status, dosen_id,
             proposal:proposals ( id, judul, user:profiles ( nama, npm ) )
           `)
           .eq("id", sessionId)
@@ -75,7 +76,8 @@ export default function DetailBimbinganMahasiswaClient() {
         const proposalId = sessionData.proposal.id;
         const { data: supervisors } = await supabase
           .from("thesis_supervisors")
-          .select(`role, dosen:profiles ( nama )`)
+          .select(`role, dosen_id, dosen:profiles ( nama )`)
+          
           
           .eq("proposal_id", proposalId);
 
@@ -116,43 +118,51 @@ export default function DetailBimbinganMahasiswaClient() {
   const isLocked = data?.drafts[0]?.file_url !== undefined;
 
   const handleKirimKePembimbing = async () => {
-    if (isLocked) return;
-    if (!sessionId) return;
-    if (!file && (!data.drafts || data.drafts.length === 0) && !catatanInput) {
-      alert("Mohon unggah file atau isi catatan sebelum mengirim.");
-      return;
+  const confirmKirim = window.confirm("Kirim data ke pembimbing? Data tidak dapat diubah setelah dikirim.");
+  if (!confirmKirim) return;
+
+  setSending(true);
+  try {
+    const { data: { session: authSession } } = await supabase.auth.getSession();
+    const userId = authSession?.user.id;
+    if (!userId) throw new Error("User tidak terautentikasi.");
+
+    if (file) {
+      const filePath = `drafts/${sessionId}/${Date.now()}-${file.name}`;
+      const { error: uploadError } = await supabase.storage.from("draftsession").upload(filePath, file);
+      if (uploadError) throw uploadError;
+
+      const { data: urlData } = supabase.storage.from("draftsession").getPublicUrl(filePath);
+      const { error: insertError } = await supabase.from("session_drafts").insert({
+        session_id: sessionId, 
+        mahasiswa_id: userId, 
+        file_url: urlData.publicUrl, 
+        catatan: catatanInput,
+      });
+      if (insertError) throw insertError;
     }
 
-    const confirmKirim = window.confirm("Kirim data ke pembimbing? Data tidak dapat diubah setelah dikirim.");
-    if (!confirmKirim) return;
+    // 🔥 PERBAIKAN: Jangan pakai loop supervisors.map()
+    // Langsung ambil dosen_id dari data sesi bimbingan yang sedang aktif
+    const targetDosenId = data?.dosen_id; 
 
-    setSending(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const userId = session?.user.id;
-      if (!userId) throw new Error("User tidak terautentikasi.");
-
-      if (file) {
-        const filePath = `drafts/${sessionId}/${Date.now()}-${file.name}`;
-        const { error: uploadError } = await supabase.storage.from("draftsession").upload(filePath, file);
-        if (uploadError) throw uploadError;
-
-        const { data: urlData } = supabase.storage.from("draftsession").getPublicUrl(filePath);
-        const { error: insertError } = await supabase.from("session_drafts").insert({
-          session_id: sessionId, mahasiswa_id: userId, file_url: urlData.publicUrl, catatan: catatanInput,
-        });
-        if (insertError) throw insertError;
-      }
-
-      alert("✅ Draft dan catatan berhasil dikirim ke pembimbing!");
-      window.location.reload();
-    } catch (err: any) {
-      console.error(err);
-      alert("Gagal mengirim: " + err.message);
-    } finally {
-      setSending(false);
+    if (targetDosenId) {
+      await sendNotification(
+        targetDosenId, // Hanya kirim ke dosen yang punya jadwal ini
+        "Draft Bimbingan Baru",
+        `${data.proposal.user.nama} telah mengunggah draft untuk Sesi Bimbingan ${data.sesi_ke}.`
+      );
     }
-  };
+
+    alert("✅ Draft berhasil dikirim ke dosen terkait!");
+    window.location.reload();
+  } catch (err: any) {
+    console.error(err);
+    alert("Gagal mengirim: " + err.message);
+  } finally {
+    setSending(false);
+  }
+};
   const handleDownloadFeedback = async (fileUrl: string) => {
   try {
    

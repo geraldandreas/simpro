@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Sidebar from '@/components/sidebar';
+import NotificationBell from '@/components/notificationBell';
 import { supabase } from '@/lib/supabaseClient';
 import { useRouter } from "next/navigation";
 
@@ -50,133 +51,130 @@ const getDocStatus = (docId: string) => {
 };
 
 const [supervisors, setSupervisors] = useState<Supervisor[]>([]);
+const [seminarStatus, setSeminarStatus] = useState<string | null>(null);
+const [sidangStatus, setSidangStatus] = useState<string | null>(null);
 
 
   useEffect(() => {
     const loadDashboardData = async () => {
       try {
+        setLoadingStep(true);
         const { data: auth } = await supabase.auth.getUser();
         if (!auth?.user) return;
         const userId = auth.user.id;
 
-    
-      // 1. PROPOSAL
-      // ===============================
-      const { data: proposal } = await supabase
-        .from("proposals")
-        .select("id, status")
-        .eq("user_id", userId)
-        .maybeSingle();
+        // 1. AMBIL SEMUA DATA UTAMA SEKALIGUS (MENCEGAH DEKLARASI GANDA)
+        const { data: proposal } = await supabase
+          .from("proposals")
+          .select("id, status")
+          .eq("user_id", userId)
+          .maybeSingle();
 
-      // default
-      let step = 0;
+        if (!proposal) {
+          setActiveStep(0);
+          setLoadingStep(false);
+          return;
+        }
 
-      if (!proposal) {
-        setActiveStep(0);
-        return;
-      }
-      step = 1; // pengajuan judul
-      
-        // 2. Cek Bimbingan & Supervisor
-        const { data: supervisorData } = await supabase
-        .from('thesis_supervisors')
-        .select(`
-          role,
-          profiles!dosen_id (
-            id,
-            nama,
-            email,
-            phone
-          )
-        `)
-        .eq('proposal_id', proposal.id);
-
+        // Ambil data pendukung untuk logika timeline & dashboard
+        const { data: seminarReq } = await supabase.from('seminar_requests').select('*').eq('proposal_id', proposal.id).maybeSingle();
+        const { data: sidangReq } = await supabase.from('sidang_requests').select('status').eq('proposal_id', proposal.id).maybeSingle();
+        const { data: docs } = await supabase.from('seminar_documents').select('*').eq('proposal_id', proposal.id);
         const { data: sessions } = await supabase.from('guidance_sessions').select('dosen_id, session_feedbacks(status_revisi)').eq('proposal_id', proposal.id).eq('kehadiran_mahasiswa', 'hadir');
-        const { data: seminarReq } = await supabase.from('seminar_requests').select('approved_by_p1, approved_by_p2, status').eq('proposal_id', proposal.id).maybeSingle();
+        const { data: supervisorData } = await supabase.from('thesis_supervisors').select('role, profiles!dosen_id (id, nama, email, phone)').eq('proposal_id', proposal.id);
 
-       if (supervisorData) {
-           const mapped: Supervisor[] = supervisorData.map((s: any) => ({
+        // 2. HITUNG VARIABEL PROGRES (DOKUMEN & BIMBINGAN)
+        const uploadedDocsCount = docs?.length || 0;
+        const verifiedDocsCount = docs?.filter(d => d.status === 'Lengkap').length || 0;
+        
+        let p1Count = 0, p2Count = 0;
+        supervisorData?.forEach((sp: any) => {
+          const count = sessions?.filter(s => s.dosen_id === sp.profiles.id && s.session_feedbacks?.[0]?.status_revisi !== 'revisi').length || 0;
+          if (sp.role === 'utama' || sp.role === 'pembimbing1') p1Count = count;
+          else p2Count = count;
+        });
+
+        const approvedByAll = seminarReq?.approved_by_p1 && seminarReq?.approved_by_p2;
+        const eligible = p1Count >= 10 && p2Count >= 10 && approvedByAll;
+
+       // 3. 🔥 LOGIKA PENENTUAN TAHAP SESUAI ALUR GATEKEEPING
+// 3. 🔥 LOGIKA PENENTUAN TAHAP SESUAI ALUR GATEKEEPING
+let currentStep = 0;
+
+if (proposal.status === "Menunggu Persetujuan Dosbing") {
+  currentStep = 1; // Tahap 2: Persetujuan Dosbing
+} else if (proposal.status === "Diterima") {
+  currentStep = 2; // Tahap 3: Bimbingan
+
+  if (eligible) {
+    currentStep = 3; // Tahap 4: Kesiapan Seminar
+
+    if (uploadedDocsCount > 0) {
+      currentStep = 4; // Tahap 5: Unggah Dokumen Seminar
+    }
+
+    if (uploadedDocsCount >= 3) {
+      currentStep = 5; // Tahap 6: Verifikasi Berkas
+    }
+
+    // Pindah ke Seminar jika Tendik sudah memverifikasi semua berkas
+    if (verifiedDocsCount >= 3) {
+      currentStep = 6; // Tahap 7: Seminar (Biru di sini selama belum Selesai)
+    }
+
+    // 🔥 PERBAIKAN: Baru pindah ke Perbaikan jika status seminar eksplisit "Selesai"
+    // Bukan "Disetujui", karena "Disetujui" berarti baru di-ACC jadwalnya oleh Kaprodi
+    if (seminarReq?.status === "Selesai") {
+      currentStep = 7; // Tahap 8: Perbaikan Seminar
+    }
+
+    // Baru pindah ke Sidang jika data pengajuan sidang sudah masuk
+    if (sidangReq) {
+      currentStep = 8; // Tahap 9: Sidang
+    }
+  }
+}
+
+setActiveStep(currentStep);
+
+        // 4. UPDATE SEMUA STATE SEKALIGUS
+        setActiveStep(currentStep);
+        setIsEligible(!!eligible);
+        setBimbinganCount({ p1: p1Count, p2: p2Count });
+        setIsAccDosen(!!approvedByAll);
+        setSeminarStatus(seminarReq?.status || null);
+        setSidangStatus(sidangReq?.status || null);
+        
+        // Simpan data dokumen untuk Card Kelengkapan Dokumen
+        if (docs) {
+          const map: { [key: string]: DocumentData } = {};
+          docs.forEach(d => map[d.nama_dokumen] = { id: d.id, status: d.status, file_url: d.file_url });
+          setDocuments(map);
+          setStats({ bimbingan: p1Count + p2Count, revisi: "Tidak Ada", docs: verifiedDocsCount });
+        }
+
+        // Simpan data pembimbing untuk Card Kontak
+        if (supervisorData) {
+          setSupervisors(supervisorData.map((s: any) => ({
             id: s.profiles.id,
             name: s.profiles.nama,
             email: s.profiles.email,
             phone: s.profiles.phone,
-            role:
-              s.role === 'utama' || s.role === 'pembimbing1'
-                ? 'Pembimbing Utama'
-                : 'Co-Pembimbing',
-        }));
-
-  setSupervisors(mapped);
-}
-
-const { data: supervisorRoles } = await supabase
-  .from('thesis_supervisors')
-  .select('dosen_id, role')
-  .eq('proposal_id', proposal.id);
-
-let p1Count = 0;
-let p2Count = 0;
-
-       supervisorRoles?.forEach(sp => {
-  const count =
-    sessions?.filter(
-      (s: any) =>
-        s.dosen_id === sp.dosen_id &&
-        s.session_feedbacks?.[0]?.status_revisi !== 'revisi'
-    ).length || 0;
-
-  if (sp.role === 'utama' || sp.role === 'pembimbing1') p1Count = count;
-  else p2Count = count;
-});
-
-
-        const approvedByAll = seminarReq?.approved_by_p1 === true && seminarReq?.approved_by_p2 === true;
-        const eligible = p1Count >= 10 && p2Count >= 10 && approvedByAll;
-      
-  
-        setBimbinganCount({ p1: p1Count, p2: p2Count });
-        setIsAccDosen(approvedByAll);
-        setIsEligible(eligible);
-        setStats(prev => ({ ...prev, bimbingan: p1Count + p2Count }));
-
-        // 3. Logic Timeline
-        if (proposal.status === "Menunggu Persetujuan Dosbing") { setActiveStep(1); }
-        else if (proposal.status === "Diterima") {
-          if (!eligible) setActiveStep(2);
-          else if (!seminarReq || seminarReq.status === 'draft') setActiveStep(3);
-          else setActiveStep(5);
+            role: s.role === 'utama' || s.role === 'pembimbing1' ? 'Pembimbing Utama' : 'Co-Pembimbing',
+          })));
         }
 
-        // 4. Statistik Dokumen
-        const { data: docs } = await supabase
-  .from('seminar_documents')
-  .select('*')
-  .eq('proposal_id', proposal.id);
-
-if (docs) {
-  const map: { [key: string]: DocumentData } = {};
-  docs.forEach(d => {
-    map[d.nama_dokumen] = {
-      id: d.id,
-      status: d.status,
-      file_url: d.file_url,
+      } catch (err) {
+        console.error("Dashboard Load Error:", err);
+      } finally {
+        setLoadingStep(false);
+      }
     };
-  });
 
-  setDocuments(map);
-
-  setStats(prev => ({
-    ...prev,
-    docs: docs.filter(d => d.status === 'Lengkap').length
-  }));
-}
-
-      } catch (err) { console.error(err); } finally { setLoadingStep(false); }
-    };
     loadDashboardData();
   }, []);
 
-  const docPercentage = Math.round((stats.docs / 17) * 100);
+  const docPercentage = Math.round((stats.docs / 3) * 100);
 
    const totalSteps = 9
   const stepWidth = 100 / (totalSteps - 1)
@@ -200,11 +198,18 @@ if (docs) {
             </div>
           </div>
 
+        <div className="flex items-center gap-6">
+    {/* KOMPONEN LONCENG BARU */}
+    <NotificationBell />
+    
+    <div className="h-8 w-[1px] bg-slate-200 mx-2" />
+
           <div className="flex items-center gap-6">
             {/* Minimalist SIMPRO Text */}
             <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
               Simpro
             </span>
+          </div>
           </div>
         </header>
 
@@ -294,18 +299,18 @@ if (docs) {
 
                 <div className="w-full space-y-3">
                    <DocumentItem
-                      label="Berita Acara Bimbingan"
-                      status={getDocStatus('berita_acara_bimbingan')}
+                      label="Form Layak & Jadwal"
+                      status={getDocStatus('form_layak_dan_jadwal')}
                     />
 
                     <DocumentItem
-                      label="Transkrip Nilai (Disahkan)"
-                      status={getDocStatus('transkrip_nilai')}
+                      label="Form Nilai Magang Gabungan"
+                      status={getDocStatus('nilai_magang_gabungan')}
                     />
 
                     <DocumentItem
-                      label="Formulir Sidang TA"
-                      status={getDocStatus('pengajuan_sidang')}
+                      label="Bukti Serah Laporan Magang"
+                      status={getDocStatus('bukti_serah_magang')}
                     />
 
                    

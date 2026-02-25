@@ -2,6 +2,8 @@
 
 import React, { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import { sendNotification } from "@/lib/notificationUtils";
+
 import { supabase } from "@/lib/supabaseClient";
 // Sidebar dihapus
 import Link from "next/link"; 
@@ -133,34 +135,61 @@ if (!user) throw new Error("User belum login");
   };
 
   const handleSaveEdit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingSession) return;
-    setSavingEdit(true);
+  e.preventDefault();
+  if (!editingSession) return;
+  setSavingEdit(true);
 
-    try {
-      const { error } = await supabase
-        .from("guidance_sessions")
-        .update({
-          tanggal: editingSession.tanggal,
-          jam: editingSession.jam,
-          metode: editingSession.metode,
-          keterangan: editingSession.keterangan,
-          status: editingSession.status, // Ini yang mengubah jadi 'selesai'
-        })
-        .eq("id", editingSession.id);
+  try {
+    // 1. Update data sesi di database
+    const { error } = await supabase
+      .from("guidance_sessions")
+      .update({
+        tanggal: editingSession.tanggal,
+        jam: editingSession.jam,
+        metode: editingSession.metode,
+        keterangan: editingSession.keterangan,
+        status: editingSession.status,
+      })
+      .eq("id", editingSession.id);
 
-      if (error) throw error;
+    if (error) throw error;
 
-      alert("✅ Detail sesi berhasil diperbarui!");
-      setIsEditModalOpen(false);
-      fetchData(); // Refresh data
+    // 2. Ambil user_id mahasiswa & Nama Dosen yang sedang login
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    // Ambil info nama dosen dari state student atau fetch ulang profile jika perlu
+    const namaDosen = student?.pembimbing1 || "Dosen Pembimbing";
 
-    } catch (err: any) {
-      alert("Gagal update: " + err.message);
-    } finally {
-      setSavingEdit(false);
+    const { data: proposal } = await supabase
+      .from("proposals")
+      .select("user_id")
+      .eq("id", proposalId)
+      .single();
+
+    if (proposal?.user_id) {
+      let title = "Update Jadwal Bimbingan";
+      let message = `Dosen ${namaDosen} telah memperbarui jadwal bimbingan Sesi ${editingSession.sesi_ke}.`;
+
+      // Jika statusnya dibatalkan
+      if (editingSession.status === "dibatalkan") {
+        title = "Bimbingan Dibatalkan";
+        message = `Maaf, bimbingan Sesi ${editingSession.sesi_ke} telah dibatalkan oleh Dosen ${namaDosen}.`;
+      }
+
+      // Kirim Notifikasi
+      await sendNotification(proposal.user_id, title, message);
     }
-  };
+
+    alert("✅ Detail sesi berhasil diperbarui!");
+    setIsEditModalOpen(false);
+    fetchData(); 
+
+  } catch (err: any) {
+    alert("Gagal update: " + err.message);
+  } finally {
+    setSavingEdit(false);
+  }
+};
 
   // Helper UI
   const formatDate = (dateStr: string) => {

@@ -3,12 +3,12 @@
 import React, { useEffect, useState } from "react";
 import { 
   Search, Bell, ArrowLeft, FileText, 
-  CheckCircle, Eye, Check, X, Download, 
   ShieldCheck, Clock, Layers, LayoutDashboard
 } from "lucide-react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { mapStatusToUI } from "@/lib/mapStatusToUI";
 import { supabase } from "@/lib/supabaseClient";
+import NotificationBell from '@/components/notificationBell';
  
 
 // ================= TYPES =================
@@ -75,73 +75,115 @@ export default function DetailProgresKaprodiClient() {
   const [processingDoc, setProcessingDoc] = useState<string | null>(null);
 
   const fetchData = async () => {
-    if (!proposalId) return;
-    try {
-        const { data: propData, error: propError } = await supabase
-  .from("proposals")
-  .select(`
-    id,
-    judul,
-    status,
-    user:profiles!proposals_user_id_fkey (
-      nama,
-      npm
-    ),
-    seminar_requests (
-      tipe,
-      status
-    )
-  `)
-  .eq("id", proposalId)
-  .single();
+  if (!proposalId) return;
+  try {
+    setLoading(true);
 
-if (propError) throw propError;
-if (!propData) throw new Error("Proposal tidak ditemukan");
+    // 1. Fetch Data Proposal dengan relasi lengkap
+    const { data: propData, error: propError } = await supabase
+      .from("proposals")
+      .select(`
+        id, judul, status,
+        user:profiles!proposals_user_id_fkey (nama, npm),
+        seminar_requests ( tipe, status, approved_by_p1, approved_by_p2, created_at ),
+        thesis_supervisors ( role, dosen_id, profiles ( nama ) ),
+        guidance_sessions ( 
+          dosen_id, 
+          kehadiran_mahasiswa, 
+          session_feedbacks ( status_revisi ) 
+        )
+      `)
+      .eq("id", proposalId)
+      .single();
 
-      const user =
-  Array.isArray(propData.user)
-    ? propData.user[0]
-    : propData.user;
+    if (propError) throw propError;
 
-setStudent({
-  id: propData.id,
-  judul: propData.judul,
-  user: {
-    nama: user?.nama ?? "Tanpa Nama",
-    npm: user?.npm ?? "-",
-  },
-});
+    // 2. Query Sidang (RLS Safe Check)
+    const { data: sidangData } = await supabase
+      .from("sidang_requests")
+      .select("id")
+      .eq("proposal_id", proposalId)
+      .maybeSingle();
 
+    const hasSidangFound = !!sidangData;
 
-      const hasSeminar =
-  propData.seminar_requests?.some(
-    (r: any) => r.tipe === "seminar" && r.status !== "Ditolak"
-  ) ?? false;
+    // 3. Set Data Mahasiswa
+    const user = Array.isArray(propData.user) ? propData.user[0] : propData.user;
+    setStudent({
+      id: propData.id,
+      judul: propData.judul,
+      user: { nama: user?.nama ?? "Tanpa Nama", npm: user?.npm ?? "-" },
+    });
 
+    // 4. Logika Bimbingan P1 & P2
+    const allSeminarReqs = propData.seminar_requests || [];
+    const activeSeminarReq = allSeminarReqs.sort((a: any, b: any) => 
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    )[0] || null;
 
-const ui = mapStatusToUI({
-  proposalStatus: propData.status,
-  hasSeminar,
-});
+    const sessions = propData.guidance_sessions || [];
+    let p1Count = 0;
+    let p2Count = 0;
 
-setTahap(ui.label);
+    propData.thesis_supervisors?.forEach((sp: any) => {
+      const count = sessions.filter((s: any) => 
+        s.dosen_id === sp.dosen_id && 
+        s.kehadiran_mahasiswa === 'hadir' &&
+        s.session_feedbacks?.[0]?.status_revisi === "disetujui"
+      ).length || 0;
 
+      if (sp.role === "utama") p1Count = count;
+      else if (sp.role === "pendamping") p2Count = count;
+    });
 
-      const { data: docData } = await supabase.from("seminar_documents").select("*").eq("proposal_id", proposalId);
-      setDocuments(docData || []);
+    // 5. Fetch Berkas Seminar (Untuk Mapper)
+    const { data: docData } = await supabase.from("seminar_documents").select("*").eq("proposal_id", proposalId);
+    const currentDocs = docData || [];
+    setDocuments(currentDocs);
+    const verifiedDocsCount = currentDocs.filter(d => d.status === 'Lengkap').length;
 
-      const { data: bimData } = await supabase
-        .from("guidance_sessions")
-        .select(`id, sesi_ke, tanggal, dosen:profiles!guidance_sessions_dosen_id_fkey (nama)`)
-        .eq("proposal_id", proposalId)
-        .order("tanggal", { ascending: false });
+    // 6. Hitung Kelayakan & Panggil Mapper Global
+    const approvedByAll = !!activeSeminarReq?.approved_by_p1 && !!activeSeminarReq?.approved_by_p2;
+    const isEligible = p1Count >= 10 && p2Count >= 10 && approvedByAll;
 
-      setBimbingan((bimData || []).map((b: any) => ({
-        id: b.id, sesi_ke: b.sesi_ke, tanggal: b.tanggal, dosen_nama: b.dosen?.nama || "-"
-      })));
+    const ui = mapStatusToUI({
+      proposalStatus: propData.status,
+      hasSeminar: !!activeSeminarReq,
+      seminarStatus: activeSeminarReq?.status,
+      hasSidang: hasSidangFound,
+      uploadedDocsCount: currentDocs.length,
+      verifiedDocsCount: verifiedDocsCount,
+      isEligible: isEligible, 
+    });
 
-    } catch (err) { console.error(err); } finally { setLoading(false); }
-  };
+    setTahap(ui.label);
+
+    // 7. Sidebar Riwayat Bimbingan (Hanya yang di-ACC)
+    const { data: bimDataHistory } = await supabase
+      .from("guidance_sessions")
+      .select(`
+        id, sesi_ke, tanggal, 
+        dosen:profiles!guidance_sessions_dosen_id_fkey (nama), 
+        session_feedbacks!inner(status_revisi)
+      `)
+      .eq("proposal_id", proposalId)
+      .eq("kehadiran_mahasiswa", "hadir")
+      .neq("session_feedbacks.status_revisi", "revisi")
+      .order("sesi_ke", { ascending: false });
+
+    setBimbingan((bimDataHistory || []).map((b: any) => ({
+      id: b.id, 
+      sesi_ke: b.sesi_ke, 
+      tanggal: b.tanggal, 
+      dosen_nama: b.dosen?.nama || "-"
+    })));
+
+  } catch (err) { 
+    console.error("Fetch Error:", err); 
+  } finally { 
+    setLoading(false); 
+  }
+};
 
   useEffect(() => { fetchData(); }, [proposalId]);
 
@@ -175,35 +217,50 @@ setTahap(ui.label);
     <div className="flex h-screen bg-[#F4F7FE] font-sans text-slate-700 overflow-hidden uppercase tracking-tighter">
 
       <div className="flex-1 flex flex-col h-full">
-        {/* HEADER */}
       <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
-          <div className="flex items-center gap-6">
-            <div className="relative w-72 group">
-            </div>
-          </div>
-
-          <div className="flex items-center gap-6">
-            {/* Minimalist SIMPRO Text */}
-            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
-              Simpro
-            </span>
-          </div>
-        </header>
+                                   <div className="flex items-center gap-6">
+                                     <div className="relative w-72 group">
+                                     </div>
+                                   </div>
+                         
+                                 <div className="flex items-center gap-6">
+                             {/* KOMPONEN LONCENG BARU */}
+                             <NotificationBell />
+                             
+                             <div className="h-8 w-[1px] bg-slate-200 mx-2" />
+                         
+                                   <div className="flex items-center gap-6">
+                                     {/* Minimalist SIMPRO Text */}
+                                     <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
+                                       Simpro
+                                     </span>
+                                   </div>
+                                   </div>
+                                 </header>
 
         <main className="flex-1 p-10 overflow-y-auto custom-scrollbar">
+
+          <div className="mb-6">
+            <button 
+              onClick={() => router.back()} 
+              className="w-12 h-12 bg-white border border-slate-200 rounded-2xl flex items-center justify-center text-slate-400 hover:text-blue-600 hover:border-blue-100 transition-all shadow-sm active:scale-95"
+            >
+              <ArrowLeft size={20} />
+            </button>
+          </div>
+
           {/* PROFILE CARD */}
           <div className="mb-12 flex flex-col lg:flex-row lg:items-end justify-between gap-6">
             <div>
               <h1 className="text-4xl font-black text-slate-800 tracking-tight leading-none mb-4">{student?.user.nama}</h1>
               <div className="flex items-center gap-4 text-slate-500">
                 <span className="px-3 py-1 bg-white rounded-lg border border-slate-200 text-[10px] font-black tracking-widest">{student?.user.npm}</span>
-                <span className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-blue-600"><Layers size={14}/> Mahasiswa Akhir</span>
-              </div>
+                  </div>
             </div>
             <div className="bg-white p-6 rounded-[2rem] border border-white shadow-xl shadow-slate-200/50 flex-1 max-w-2xl relative overflow-hidden group">
               <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><FileText size={80}/></div>
               <p className="text-[10px] font-black text-blue-600 mb-2 tracking-[0.2em]">Judul Skripsi Terdaftar</p>
-              <h2 className="text-lg font-black text-slate-800 leading-tight italic font-serif normal-case">"{student?.judul}"</h2>
+              <h2 className="text-lg font-black text-slate-800 leading-tight font-serif normal-case">"{student?.judul}"</h2>
             </div>
           </div>
 
@@ -230,7 +287,7 @@ setTahap(ui.label);
             <div className="lg:col-span-4 space-y-8">
               <div className="bg-slate-900 rounded-[3rem] p-8 shadow-2xl text-white sticky top-28 overflow-hidden">
                 <div className="absolute -right-4 -top-4 opacity-10 rotate-12"><Clock size={120}/></div>
-                <h3 className="text-xs font-black text-blue-400 uppercase tracking-[0.2em] mb-8 relative z-10">Riwayat Konsultasi</h3>
+                <h3 className="text-xs font-black text-blue-400 uppercase tracking-[0.2em] mb-8 relative z-10">Riwayat Bimbingan</h3>
                 <div className="space-y-8 relative z-10">
                   {bimbingan.length === 0 ? (
                     <div className="py-10 text-center opacity-30 italic font-black uppercase tracking-widest text-xs">No guidance record</div>

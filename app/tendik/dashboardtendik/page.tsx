@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import DetailProposalMahasiswaClient from "./dashboardtendikclient";
+import DetailProposalMahasiswaClient from "./manajemenskripsitendikclient";
 
 export const dynamic = "force-dynamic";
 
