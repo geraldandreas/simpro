@@ -2,9 +2,9 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { 
   Search, 
-  Bell, 
   Filter, 
   FileText, 
   Activity,
@@ -18,9 +18,14 @@ interface ProposalItem {
   judul: string;
   bidang: string;
   status: string;
+  isForMe?: boolean;
+  hasResponded?: boolean;
+  isReadyToAssign?: boolean;
+  isRejectedByDosen?: boolean; // 🔥 Flag Baru untuk mendeteksi penolakan
   user: {
     nama: string | null;
     npm: string | null;
+    avatar_url?: string | null;
   };
 }
 
@@ -31,18 +36,48 @@ export default function AksesProposalPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterBidang, setFilterBidang] = useState("Semua");
   const [filterStatus, setFilterStatus] = useState("Semua");
+  const [currentDosenId, setCurrentDosenId] = useState<string | null>(null);
 
   const fetchProposals = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from("proposals")
-        .select(`id, judul, bidang, status, user:profiles ( nama, npm )`)
-        .order("created_at", { ascending: false })
-        .returns<ProposalItem[]>();
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData.session?.user.id || null;
+      setCurrentDosenId(userId);
 
-      if (error) throw error;
-      setProposals(data || []);
+      const { data: propData, error: propError } = await supabase
+        .from("proposals")
+        .select(`
+          id, judul, bidang, status, 
+          user:profiles ( nama, npm, avatar_url ),
+          proposal_recommendations ( dosen_id ),
+          thesis_supervisors ( dosen_id, status )
+        `)
+        .order("created_at", { ascending: false });
+
+      if (propError) throw propError;
+
+      const mappedData = (propData as any[]).map(p => {
+        const isRecommended = p.proposal_recommendations?.some((r: any) => r.dosen_id === userId);
+        const alreadyResponded = p.thesis_supervisors?.some((s: any) => s.dosen_id === userId);
+        
+        // Cek jumlah ACC
+        const acceptedCount = p.thesis_supervisors?.filter((s: any) => s.status === 'accepted').length;
+        const ready = acceptedCount >= 2 && p.status !== "Diterima";
+
+        // 🔥 LOGIKA BARU: Cek apakah ada dosen yang menolak di tabel supervisors
+        const hasRejection = p.thesis_supervisors?.some((s: any) => s.status === 'rejected');
+        
+        return {
+          ...p,
+          isForMe: isRecommended,
+          hasResponded: alreadyResponded,
+          isReadyToAssign: ready,
+          isRejectedByDosen: hasRejection // Simpan ke dalam object
+        };
+      });
+
+      setProposals(mappedData);
     } catch (err) {
       console.error("❌ Gagal mengambil proposal:", err);
     } finally {
@@ -50,7 +85,9 @@ export default function AksesProposalPage() {
     }
   };
 
-  useEffect(() => { fetchProposals(); }, []);
+  useEffect(() => {
+    fetchProposals();
+  }, []);
 
   const uniqueBidang = ["Semua", ...Array.from(new Set(proposals.map((p) => p.bidang)))];
 
@@ -60,10 +97,14 @@ export default function AksesProposalPage() {
       item.user?.nama?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.user?.npm?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchBidang = filterBidang === "Semua" || item.bidang === filterBidang;
+    
+    // 🔥 PERBAIKAN FILTER: Masukkan isRejectedByDosen ke dalam deteksi filter
     const matchStatus =
       filterStatus === "Semua" ||
       (filterStatus === "Diterima" && item.status === "Diterima") ||
-      (filterStatus === "Menunggu" && item.status !== "Diterima");
+      (filterStatus === "Siap Ditetapkan" && item.isReadyToAssign) || 
+      (filterStatus === "Ditolak" && (item.status === "Ditolak" || item.status === "Ditolak Dosbing" || item.isRejectedByDosen)) ||
+      (filterStatus === "Menunggu" && !item.isReadyToAssign && !item.isRejectedByDosen && !["Diterima", "Ditolak", "Ditolak Dosbing"].includes(item.status));
 
     return matchSearch && matchBidang && matchStatus;
   });
@@ -76,12 +117,7 @@ export default function AksesProposalPage() {
 
   return (
     <div className="flex min-h-screen bg-[#F8F9FB] font-sans text-slate-700">
-     
-
-      {/* MAIN CONTAINER - Menggunakan flex-1 agar memenuhi sisa layar tanpa margin manual */}
       <main className="flex-1 flex flex-col h-screen overflow-hidden">
-
-        {/* SCROLLABLE AREA - Memisahkan scroll agar header tetap sticky */}
         <div className="flex-1 overflow-y-auto p-10 custom-scrollbar">
           <div className="max-w-[1400px] mx-auto w-full">
             <div className="mb-10">
@@ -89,7 +125,7 @@ export default function AksesProposalPage() {
                 Proposal Mahasiswa
               </h1>
               <p className="text-slate-500 font-medium mt-1">
-                Review usulan judul dan tentukan dosen pembimbing akademik yang sesuai.
+                Review usulan judul skripsi mahasiswa yang sesuai dengan bidang keahlian Anda.
               </p>
             </div>
 
@@ -120,7 +156,9 @@ export default function AksesProposalPage() {
                   >
                     <option value="Semua">Semua Status</option>
                     <option value="Menunggu">Menunggu</option>
-                    <option value="Diterima">Diterima</option>
+                    <option value="Siap Ditetapkan">Siap Ditetapkan</option>
+                    <option value="Diterima">Ditetapkan</option>
+                    <option value="Ditolak">Ditolak</option>
                   </select>
                 </div>
 
@@ -177,14 +215,44 @@ export default function AksesProposalPage() {
                     ) : (
                       filteredProposals.map((item) => {
                         const isAccepted = item.status === "Diterima";
+                        // 🔥 PERBAIKAN STATUS REJECTED DENGAN DETEKSI FLAG BARU
+                        const isRejected = item.status === "Ditolak" || item.status === "Ditolak Dosbing" || item.isRejectedByDosen;
+                        const showUrgentAction = item.isForMe && !item.hasResponded;
+                        const readyToAssign = item.isReadyToAssign;
+
                         return (
-                          <tr key={item.id} className="group hover:bg-blue-50/30 transition-all duration-300">
+                          <tr 
+                            key={item.id} 
+                            className={`group transition-all duration-300 ${
+                              showUrgentAction ? "bg-blue-50/50 hover:bg-blue-100/50" : "hover:bg-blue-50/30"
+                            }`}
+                          >
                             <td className="py-8 px-8">
                               <div className="flex items-center gap-4">
-                                <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-black group-hover:bg-blue-600 group-hover:text-white transition-all uppercase">{item.user?.nama?.charAt(0) || "?"}</div>
+                                {/* 🔥 LOGIKA AVATAR MAHASISWA */}
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black transition-all relative overflow-hidden shrink-0 border border-slate-200 uppercase ${
+                                  showUrgentAction 
+                                  ? "bg-blue-600 text-white shadow-md animate-pulse border-blue-600" 
+                                  : "bg-slate-100 text-slate-400 group-hover:bg-blue-600 group-hover:text-white"
+                                }`}>
+                                  {item.user?.avatar_url ? (
+                                    <Image 
+                                      src={item.user.avatar_url} 
+                                      alt={item.user?.nama || "User"} 
+                                      layout="fill" 
+                                      objectFit="cover" 
+                                    />
+                                  ) : (
+                                    item.user?.nama?.charAt(0) || "?"
+                                  )}
+                                </div>
                                 <div className="min-w-0">
-                                    <p className="text-sm font-black text-slate-800 leading-none truncate uppercase tracking-tight">{item.user?.nama ?? "-"}</p>
-                                    <p className="text-[10px] text-slate-400 font-black mt-2 tracking-widest">{item.user?.npm ?? "-"}</p>
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <p className="text-sm font-black text-slate-800 leading-none truncate uppercase tracking-tight">
+                                        {item.user?.nama ?? "-"}
+                                      </p>
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 font-black tracking-widest">{item.user?.npm ?? "-"}</p>
                                 </div>
                               </div>
                             </td>
@@ -195,14 +263,27 @@ export default function AksesProposalPage() {
                                <span className="text-[10px] font-black text-slate-400 bg-slate-100 px-3 py-1 rounded-lg uppercase tracking-wider">{item.bidang}</span>
                             </td>
                             <td className="py-8 px-8 text-center">
-                              <span className={`inline-block px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border shadow-sm ${isAccepted ? "bg-emerald-100 text-emerald-700 border-emerald-200" : "bg-amber-100 text-amber-700 border-amber-200"}`}>
-                                {isAccepted ? "Ditetapkan" : "Menunggu"}
+                              <span className={`inline-block px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border shadow-sm ${
+                                isAccepted 
+                                  ? "bg-emerald-100 text-emerald-700 border-emerald-200" 
+                                  : readyToAssign
+                                  ? "bg-blue-100 text-blue-700 border-blue-200" 
+                                  : isRejected
+                                  ? "bg-red-100 text-red-700 border-red-200"
+                                  : "bg-amber-100 text-amber-700 border-amber-200"
+                              }`}>
+                                {isAccepted ? "Ditetapkan" : readyToAssign ? "Siap Ditetapkan" : isRejected ? "Ditolak" : "Menunggu"}
                               </span>
                             </td>
                             <td className="py-8 px-8 text-center">
                               <Link href={`/dosen/detailproposalmahasiswa?id=${item.id}`}>
-                                <button className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-lg active:scale-95 group/btn">
-                                  DETAIL <ArrowRight size={14} className="group-hover/btn:translate-x-1 transition-transform" />
+                                <button className={`inline-flex items-center gap-2 px-5 py-2.5 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-lg active:scale-95 group/btn ${
+                                  showUrgentAction 
+                                  ? "bg-blue-600 hover:bg-blue-700 text-white ring-4 ring-blue-100" 
+                                  : "bg-slate-900 hover:bg-blue-600 text-white"
+                                }`}>
+                                  {showUrgentAction ? "RESPON SEKARANG" : "DETAIL"} 
+                                  <ArrowRight size={14} className="group-hover/btn:translate-x-1 transition-transform" />
                                 </button>
                               </Link>
                             </td>

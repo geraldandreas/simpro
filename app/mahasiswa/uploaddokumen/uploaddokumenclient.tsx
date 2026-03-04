@@ -112,6 +112,9 @@ export default function UploadDokumenClient() {
   const handleFinalSubmit = async () => {
     if (percentage < 100) return;
 
+    const confirmKonsultasi = window.confirm("PERHATIAN!\n\nPastikan Anda sudah berkonsultasi dengan Dosen Pembimbing Utama & Pendamping terkait usulan tanggal dan jam seminar.\n\nForm Usulan Jadwal Anda akan dibaca oleh Kaprodi untuk penetapan final.\n\nLanjutkan pengajuan?");
+    if (!confirmKonsultasi) return;
+
     const confirm1 = window.confirm("Apakah Anda sudah mengirimkan File Skripsi ke email informatika@unpad.ac.id?");
     if (!confirm1) {
         alert("Silakan kirimkan email terlebih dahulu sebelum mengajukan seminar di sistem.");

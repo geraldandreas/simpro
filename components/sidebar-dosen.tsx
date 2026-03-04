@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Image from "next/image"; // 🔥 Import Image dari Next.js
 import {
   LayoutDashboard,
   Users,
@@ -29,6 +30,7 @@ export default function SidebarDosen() {
 
   const [nama, setNama] = useState("Loading...");
   const [role, setRole] = useState("Dosen");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null); // 🔥 State untuk avatar
 
   // ================= FETCH PROFILE =================
   useEffect(() => {
@@ -38,12 +40,13 @@ export default function SidebarDosen() {
 
       const { data } = await supabase
         .from("profiles")
-        .select("nama")
+        .select("nama, avatar_url") // 🔥 Tambahkan avatar_url
         .eq("id", user.id)
         .single();
 
-      if (data?.nama) {
-        setNama(data.nama);
+      if (data) {
+        if (data.nama) setNama(data.nama);
+        if (data.avatar_url) setAvatarUrl(data.avatar_url); // 🔥 Set state avatar
       }
     };
 
@@ -75,11 +78,21 @@ export default function SidebarDosen() {
       {/* ================= USER PROFILE ================= */}
       <div className="p-6 pb-2">
         <div className="flex items-center gap-3 mb-8">
-          <div className="w-10 h-10 rounded-full bg-[#2B5F9E] flex items-center justify-center text-white font-bold text-lg">
-            {nama.charAt(0).toUpperCase()}
+          {/* 🔥 Modifikasi wadah inisial agar bisa menampung gambar */}
+          <div className="w-10 h-10 rounded-full bg-[#2B5F9E] flex items-center justify-center text-white font-bold text-lg relative overflow-hidden shrink-0">
+            {avatarUrl ? (
+              <Image 
+                src={avatarUrl} 
+                alt="Profile" 
+                layout="fill" 
+                objectFit="cover" 
+              />
+            ) : (
+              nama.charAt(0).toUpperCase()
+            )}
           </div>
-          <div>
-            <h3 className="text-sm font-bold text-gray-900">
+          <div className="min-w-0">
+            <h3 className="text-sm font-bold text-gray-900 truncate">
               {nama}
             </h3>
             <p className="text-xs text-blue-600 font-medium">

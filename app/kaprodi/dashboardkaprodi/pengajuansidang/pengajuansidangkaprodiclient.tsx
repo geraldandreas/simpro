@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import NotificationBell from '@/components/notificationBell';
+import Image from "next/image";
 import {
   Search, 
   Bell, 
@@ -20,6 +21,7 @@ interface StudentRow {
   revision_id: string; 
   nama: string;
   npm: string;
+  avatar_url?: string | null;
   judul: string;
   bidang: string;
   file_name: string;
@@ -77,6 +79,7 @@ export default function PengajuanSidangKaprodiClient() {
               revision_id: item.id,
               nama: profile.nama,
               npm: profile.npm,
+              avatar_url: profile.avatar_url || null,
               judul: prop.judul,
               bidang: prop.bidang,
               file_name: item.original_name
@@ -164,7 +167,19 @@ export default function PengajuanSidangKaprodiClient() {
                     <tr key={item.revision_id} className="group hover:bg-blue-50/30 transition-all duration-300">
                       <td className="px-8 py-8">
                         <div className="flex items-center gap-4">
-                          <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-black group-hover:bg-blue-600 group-hover:text-white transition-all uppercase shadow-inner tracking-tighter">{item.nama.charAt(0)}</div>
+                         {/* 🔥 LOGIKA RENDER FOTO / INISIAL */}
+                          <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-black group-hover:bg-blue-600 group-hover:text-white transition-all uppercase shadow-inner tracking-tighter relative overflow-hidden shrink-0 border border-slate-200">
+                            {item.avatar_url ? (
+                              <Image 
+                                src={item.avatar_url} 
+                                alt={item.nama || "User"} 
+                                layout="fill" 
+                                objectFit="cover" 
+                              />
+                            ) : (
+                              item.nama.charAt(0)
+                            )}
+                          </div>
                           <div className="min-w-0">
                             <p className="text-sm font-black text-slate-800 leading-none truncate uppercase tracking-tight">{item.nama}</p>
                             <p className="text-[10px] text-blue-500 font-bold uppercase flex items-center gap-1.5 mt-2 tracking-tight"><User size={10} /> Mahasiswa Akhir</p>

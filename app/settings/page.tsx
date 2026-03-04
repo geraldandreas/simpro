@@ -1,8 +1,10 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-// ShieldLock diganti menjadi ShieldCheck
-import { Bell, Search, Trash2, LogOut, Check, User, ShieldCheck, AlertCircle, Phone, Mail, IdCard, Lock } from "lucide-react"; 
+import React, { useEffect, useState, useRef } from "react";
+import { 
+  Bell, Search, Trash2, LogOut, Check, User, 
+  ShieldCheck, AlertCircle, Phone, Mail, IdCard, Lock, Camera 
+} from "lucide-react"; 
 import NotificationBell from '@/components/notificationBell';
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
@@ -12,6 +14,7 @@ import SidebarDosen from "@/components/sidebar-dosen";
 import SidebarTendik from "@/components/sidebar-tendik";
 import SidebarKaprodi from "@/components/sidebar-kaprodi";
 import SidebarMahasiswa from "@/components/sidebar";
+import Image from "next/image"; // Import Image dari Next.js
 
 // --- TYPES ---
 interface ProfileForm {
@@ -20,15 +23,13 @@ interface ProfileForm {
   email: string;
   phone: string;
   role: string;
+  avatar_url: string | null; // Tambahkan avatar_url
 }
 const NEED_ML_64 = ["mahasiswa", "kaprodi", "tendik", ] as const;
 
-
-
-
 export default function SettingsPage() {
-  
   const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [form, setForm] = useState<ProfileForm>({
     nama: "",
@@ -36,13 +37,12 @@ export default function SettingsPage() {
     email: "",
     phone: "",
     role: "",
+    avatar_url: null,
   });
 
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [savingPass, setSavingPass] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const isDosenSettings = form.role === "dosen";
   
@@ -67,6 +67,7 @@ export default function SettingsPage() {
           email: data.email ?? user.email ?? "",
           phone: data.phone ?? "",
           role: data.role ?? "mahasiswa",
+          avatar_url: data.avatar_url ?? null, // Load avatar url dari DB
         });
       }
       setLoading(false);
@@ -78,6 +79,64 @@ export default function SettingsPage() {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
+  // ================= UPLOAD AVATAR LOGIC =================
+  const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    try {
+      setUploadingAvatar(true);
+      
+      const file = event.target.files?.[0];
+      if (!file) return;
+
+      // Validasi File
+      if (!file.type.includes('image/')) {
+        return alert("Harap unggah file gambar (JPG/PNG).");
+      }
+      if (file.size > 2 * 1024 * 1024) {
+        return alert("Ukuran gambar maksimal 2MB.");
+      }
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Buat nama file unik (opsional: timpa file lama jika namanya sama dengan ID user)
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${user.id}-${Math.random()}.${fileExt}`;
+      const filePath = `public/${fileName}`;
+
+      // Upload ke Supabase Storage (Bucket 'avatars')
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      // Dapatkan Public URL
+      const { data } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+      
+      const publicUrl = data.publicUrl;
+
+      // Update tabel Profiles dengan URL baru
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ avatar_url: publicUrl })
+        .eq('id', user.id);
+
+      if (updateError) throw updateError;
+
+      // Update UI (State)
+      setForm((prev) => ({ ...prev, avatar_url: publicUrl }));
+      alert("✅ Foto profil berhasil diubah!");
+
+    } catch (error: any) {
+      alert("❌ Gagal mengunggah foto: " + error.message);
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
+  // ================= SAVE PROFILE LOGIC =================
   const handleSaveProfile = async () => {
     setSaving(true);
     try {
@@ -94,25 +153,6 @@ export default function SettingsPage() {
       alert("❌ Gagal update profil: " + err.message);
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handleChangePassword = async () => {
-    if (!password || !confirmPassword) return alert("⚠️ Harap isi kedua kolom kata sandi.");
-    if (password !== confirmPassword) return alert("⚠️ Kata sandi tidak cocok.");
-    if (password.length < 6) return alert("⚠️ Kata sandi minimal 6 karakter.");
-
-    setSavingPass(true);
-    try {
-      const { error } = await supabase.auth.updateUser({ password });
-      if (error) throw error;
-      alert("✅ Kata sandi berhasil diubah!");
-      setPassword("");
-      setConfirmPassword("");
-    } catch (err: any) {
-      alert("❌ Gagal ubah sandi: " + err.message);
-    } finally {
-      setSavingPass(false);
     }
   };
 
@@ -136,35 +176,17 @@ export default function SettingsPage() {
     <div className="flex min-h-screen bg-[#F4F7FE] font-sans text-slate-700">
       {renderSidebar()}
 
-     <main
-  className={`
-    flex-1 min-h-screen flex flex-col
-    ${!isDosenSettings ? "ml-64" : ""}
-  `}
->
-
+      <main className={`flex-1 min-h-screen flex flex-col ${!isDosenSettings ? "ml-64" : ""}`}>
         
-        {/* HEADER - Glassmorphism */}
-       <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
-                     <div className="flex items-center gap-6">
-                       <div className="relative w-72 group">
-                       </div>
-                     </div>
-           
-                   <div className="flex items-center gap-6">
-               {/* KOMPONEN LONCENG BARU */}
-               <NotificationBell />
-               
-               <div className="h-8 w-[1px] bg-slate-200 mx-2" />
-           
-                     <div className="flex items-center gap-6">
-                       {/* Minimalist SIMPRO Text */}
-                       <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
-                         Simpro
-                       </span>
-                     </div>
-                     </div>
-                   </header>
+        {/* HEADER */}
+        <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
+          <div className="flex items-center gap-6"></div>
+          <div className="flex items-center gap-6">
+            <NotificationBell />
+            <div className="h-8 w-[1px] bg-slate-200 mx-2" />
+            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">Simpro</span>
+          </div>
+        </header>
 
         <div className="p-10 max-w-7xl mx-auto w-full">
           <header className="mb-10">
@@ -175,7 +197,6 @@ export default function SettingsPage() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
             
             <div className="lg:col-span-8 space-y-10">
-              
               {/* SECTION: PROFIL PENGGUNA */}
               <section className="bg-white rounded-[2.5rem] border border-white shadow-xl shadow-slate-200/50 overflow-hidden">
                 <div className="p-8 border-b border-slate-50 bg-slate-50/30 flex items-center gap-3">
@@ -187,9 +208,41 @@ export default function SettingsPage() {
 
                 <div className="p-10">
                   <div className="flex items-center gap-8 mb-10">
-                    <div className="w-24 h-24 bg-blue-50 rounded-[2rem] flex items-center justify-center border-4 border-white shadow-xl text-blue-600 font-black text-3xl shrink-0">
-                      {form.nama.charAt(0).toUpperCase()}
+                    
+                    {/* AVATAR UPLOAD SECTION */}
+                    <div className="relative group">
+                      <div className="w-24 h-24 bg-blue-50 rounded-[2rem] flex items-center justify-center border-4 border-white shadow-xl text-blue-600 font-black text-3xl shrink-0 overflow-hidden relative">
+                        {form.avatar_url ? (
+                          <Image src={form.avatar_url} alt="Avatar" layout="fill" objectFit="cover" />
+                        ) : (
+                          form.nama.charAt(0).toUpperCase()
+                        )}
+                        
+                        {/* Overlay Upload */}
+                        <div 
+                          onClick={() => fileInputRef.current?.click()}
+                          className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer"
+                        >
+                          <Camera className="text-white" size={24} />
+                        </div>
+                      </div>
+                      
+                      {/* Hidden Input File */}
+                      <input 
+                        type="file" 
+                        accept="image/png, image/jpeg, image/jpg" 
+                        className="hidden" 
+                        ref={fileInputRef} 
+                        onChange={handleAvatarUpload}
+                      />
+                      
+                      {uploadingAvatar && (
+                         <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-[8px] font-black px-3 py-1 rounded-full uppercase tracking-widest whitespace-nowrap shadow-lg">
+                            Uploading...
+                         </div>
+                      )}
                     </div>
+
                     <div>
                       <h3 className="text-2xl font-black text-slate-800 leading-none uppercase tracking-tight">{form.nama || "User"}</h3>
                       <p className="text-blue-600 font-black tracking-[0.15em] text-[10px] mt-3 bg-blue-50 px-4 py-1.5 rounded-full border border-blue-100 w-fit uppercase">
@@ -216,9 +269,6 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </section>
-
-          
-
             </div>
 
             <div className="lg:col-span-4 space-y-10">

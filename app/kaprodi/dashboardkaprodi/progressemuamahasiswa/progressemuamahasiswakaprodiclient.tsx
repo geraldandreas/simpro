@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import NotificationBell from '@/components/notificationBell';
 import { mapStatusToUI } from "@/lib/mapStatusToUI";
+import Image from "next/image";
 
 
 import {
@@ -42,6 +43,7 @@ interface StudentProgress {
   judul: string;
   status: string;
   pembimbing: string;
+  avatar_url?: string | null;
 }
 
 export default function ProgresSemuaMahasiswaKaprodiClient() {
@@ -59,7 +61,7 @@ export default function ProgresSemuaMahasiswaKaprodiClient() {
         .from("proposals")
         .select(`
           id, judul, status,
-          profiles ( nama, npm ),
+          profiles ( nama, npm, avatar_url ),
           thesis_supervisors ( role, dosen_id, profiles ( nama ) ),
           seminar_requests ( tipe, status, approved_by_p1, approved_by_p2, created_at ),
           sidang_requests ( id, status ),
@@ -124,6 +126,7 @@ export default function ProgresSemuaMahasiswaKaprodiClient() {
           id: p.id,
           nama: p.profiles?.nama ?? "-",
           npm: p.profiles?.npm ?? "-",
+          avatar_url: p.profiles?.avatar_url || null,
           judul: p.judul,
           status: ui.label, // Label sekarang sinkron total
           pembimbing: p.thesis_supervisors?.find((s: any) => s.role === "utama")?.profiles?.nama ?? "-",
@@ -272,8 +275,18 @@ export default function ProgresSemuaMahasiswaKaprodiClient() {
                     <tr key={mhs.id} className="group hover:bg-blue-50/30 transition-all duration-300">
                       <td className="px-8 py-8">
                         <div className="flex items-center gap-4">
-                          <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-black group-hover:bg-blue-600 group-hover:text-white transition-all shrink-0">
-                            {mhs.nama.charAt(0)}
+                         {/* 🔥 LOGIKA RENDER FOTO/INISIAL MAHASISWA */}
+                          <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-black group-hover:bg-blue-600 group-hover:text-white transition-all relative overflow-hidden shrink-0 border border-slate-200">
+                            {mhs.avatar_url ? (
+                              <Image 
+                                src={mhs.avatar_url} 
+                                alt={mhs.nama} 
+                                layout="fill" 
+                                objectFit="cover" 
+                              />
+                            ) : (
+                              mhs.nama.charAt(0).toUpperCase()
+                            )}
                           </div>
                           <div className="min-w-0">
                             <p className="text-sm font-black text-slate-800 leading-none truncate uppercase tracking-tighter">{mhs.nama}</p>

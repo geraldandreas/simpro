@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { sendNotification } from "@/lib/notificationUtils";
-
+import Image from "next/image"; 
 import { supabase } from "@/lib/supabaseClient";
 // Sidebar dihapus
 import Link from "next/link"; 
@@ -20,6 +20,7 @@ interface StudentDetail {
   status: string;
   pembimbing1: string;
   pembimbing2: string;
+  avatar_url?: string | null;
 }
 
 interface GuidanceSession {
@@ -40,6 +41,7 @@ interface proposalData {
   user: {
     nama: string;
     npm: string;
+    avatar_url?: string | null;
   };
   
 }
@@ -79,7 +81,8 @@ if (!user) throw new Error("User belum login");
     status,
     user:profiles (
       nama,
-      npm
+      npm,
+      avatar_url
     )
   `)
   .eq("id", proposalId)
@@ -108,6 +111,7 @@ if (!user) throw new Error("User belum login");
         status: propData?.status,
         pembimbing1: p1,
         pembimbing2: p2,
+        avatar_url: propData?.user?.avatar_url,
       });
 
       // 3. Ambil Riwayat Bimbingan
@@ -232,12 +236,21 @@ if (!user) throw new Error("User belum login");
           <div className="lg:col-span-1 space-y-6">
             <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
               <div className="flex flex-col items-center text-center mb-6">
-                <div className="w-24 h-24 bg-blue-50 rounded-full flex items-center justify-center mb-4 border-2 border-blue-100 text-blue-600 font-bold text-3xl">
-                  {student.nama.charAt(0).toUpperCase()}
+                {/* 🔥 LOGIKA FOTO PROFIL MAHASISWA */}
+                <div className="w-24 h-24 bg-blue-50 rounded-full flex items-center justify-center mb-4 border-4 border-white shadow-md text-blue-600 font-bold text-3xl relative overflow-hidden shrink-0">
+                  {student.avatar_url ? (
+                    <Image 
+                      src={student.avatar_url} 
+                      alt={student.nama} 
+                      layout="fill" 
+                      objectFit="cover" 
+                    />
+                  ) : (
+                    student.nama.charAt(0).toUpperCase()
+                  )}
                 </div>
                 <h2 className="text-lg font-bold text-gray-900">{student.nama}</h2>
                 <p className="text-sm text-gray-500 font-medium">{student.npm}</p>
-                <div className="mt-3 px-4 py-1.5 bg-[#E6CF95] text-white text-xs font-bold rounded-full">Proses Bimbingan</div>
               </div>
               <div className="space-y-4 border-t border-gray-100 pt-6">
                 <div>

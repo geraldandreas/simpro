@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from "react";
 import NotificationBell from '@/components/notificationBell';
+import Image from "next/image";
 import { Search, Bell, CalendarCheck, User, BookOpen, ArrowRight, LayoutDashboard } from 'lucide-react';
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 
+// 🔥 Interface diperbaiki (Dihapus tanda [] pada proposal dan user)
 interface SeminarRequest {
   id: string;
   status: string;
@@ -15,15 +17,16 @@ interface SeminarRequest {
     user: {
       nama: string;
       npm: string;
-    }[];
-  }[];
+      avatar_url?: string | null;
+    };
+  };
 }
 
 export default function PengajuanSeminarKaprodiClient() {
   const [students, setStudents] = useState<SeminarRequest[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // ================= FETCH DATA (Backend Logic Tetap) =================
+  // ================= FETCH DATA =================
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
@@ -38,17 +41,20 @@ export default function PengajuanSeminarKaprodiClient() {
               bidang,
               user:profiles (
                 nama,
-                npm
+                npm,
+                avatar_url
               )
             )
           `)
-          .eq('status', 'Menunggu Persetujuan') // Data baru muncul jika status SUDAH diubah mahasiswa
-          .eq('approved_by_p1', true)           // Dan P1 sudah ACC
-          .eq('approved_by_p2', true)          // Dan P2 sudah ACC
-      .order('created_at', { ascending: false });
+          .eq('status', 'Menunggu Persetujuan') 
+          .eq('approved_by_p1', true)           
+          .eq('approved_by_p2', true)          
+          .order('created_at', { ascending: false });
 
         if (error) throw error;
-        setStudents(data);
+        
+        // Memaksa tipe data agar sesuai dengan interface
+        setStudents(data as unknown as SeminarRequest[]);
 
       } catch (err) {
         console.error("Error fetching requests:", err);
@@ -64,26 +70,19 @@ export default function PengajuanSeminarKaprodiClient() {
     <div className="min-h-screen bg-[#F4F7FE] font-sans text-slate-700">
       
       <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
-                          <div className="flex items-center gap-6">
-                            <div className="relative w-72 group">
-                            </div>
-                          </div>
-                
-                        <div className="flex items-center gap-6">
-                    {/* KOMPONEN LONCENG BARU */}
-                    <NotificationBell />
-                    
-                    <div className="h-8 w-[1px] bg-slate-200 mx-2" />
-                
-                          <div className="flex items-center gap-6">
-                            {/* Minimalist SIMPRO Text */}
-                            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
-                              Simpro
-                            </span>
-                          </div>
-                          </div>
-                        </header>
-          
+        <div className="flex items-center gap-6">
+          <div className="relative w-72 group"></div>
+        </div>
+        <div className="flex items-center gap-6">
+          <NotificationBell />
+          <div className="h-8 w-[1px] bg-slate-200 mx-2" />
+          <div className="flex items-center gap-6">
+            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
+              Simpro
+            </span>
+          </div>
+        </div>
+      </header>
 
       {/* --- MAIN CONTENT --- */}
       <main className="p-10 max-w-[1400px] mx-auto w-full">
@@ -140,70 +139,77 @@ export default function PengajuanSeminarKaprodiClient() {
                     </td>
                   </tr>
                 ) : (
-                  students.map((item) => (
-                    <tr key={item.id} className="group hover:bg-blue-50/30 transition-all duration-300">
-                      {/* INFORMASI MAHASISWA */}
-                      <td className="px-8 py-8">
-                        <div className="flex items-center gap-4">
-                          <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-black group-hover:bg-blue-600 group-hover:text-white transition-all shrink-0 uppercase">
-                            {/* @ts-ignore */}
-                            {item.proposal?.user?.nama?.charAt(0) || "?"}
+                  students.map((item) => {
+                    // Semua @ts-ignore sudah dihapus karena interface sudah benar
+                    const userData = item.proposal?.user;
+
+                    return (
+                      <tr key={item.id} className="group hover:bg-blue-50/30 transition-all duration-300">
+                        {/* INFORMASI MAHASISWA */}
+                        <td className="px-8 py-8">
+                          <div className="flex items-center gap-4">
+                            {/* 🔥 LOGIKA RENDER FOTO / INISIAL */}
+                            <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-black group-hover:bg-blue-600 group-hover:text-white transition-all relative overflow-hidden shrink-0 border border-slate-200 uppercase">
+                              {userData?.avatar_url ? (
+                                <Image 
+                                  src={userData.avatar_url} 
+                                  alt={userData.nama || "User"} 
+                                  layout="fill" 
+                                  objectFit="cover" 
+                                />
+                              ) : (
+                                userData?.nama?.charAt(0) || "?"
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                                <p className="text-sm font-black text-slate-800 leading-none truncate uppercase tracking-tight">
+                                  {userData?.nama || "-"}
+                                </p>
+                                <div className="flex items-center gap-1.5 mt-1.5 text-blue-500 font-bold text-[10px] uppercase tracking-widest">
+                                  <User size={10} /> Mahasiswa Aktif
+                                </div>
+                            </div>
                           </div>
-                          <div className="min-w-0">
-                              <p className="text-sm font-black text-slate-800 leading-none truncate uppercase tracking-tight">
-                                {/* @ts-ignore */}
-                                {item.proposal?.user?.nama || "-"}
-                              </p>
-                              <div className="flex items-center gap-1.5 mt-1.5 text-blue-500 font-bold text-[10px] uppercase tracking-widest">
-                                <User size={10} /> Mahasiswa Aktif
-                              </div>
-                          </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      {/* NPM */}
-                      <td className="px-8 py-8 text-center">
-                        <span className="text-xs font-bold text-slate-400 tracking-tighter tabular-nums">
-                          {/* @ts-ignore */}
-                          {item.proposal?.user?.npm || "-"}
-                        </span>
-                      </td>
+                        {/* NPM */}
+                        <td className="px-8 py-8 text-center">
+                          <span className="text-xs font-bold text-slate-400 tracking-tighter tabular-nums">
+                            {userData?.npm || "-"}
+                          </span>
+                        </td>
 
-                      {/* JUDUL */}
-                      <td className="px-8 py-8">
-                        <p className="text-[13px] font-bold text-slate-600 leading-relaxed italic line-clamp-2 pr-6">
-                          {/* @ts-ignore */}
-                          "{item.proposal?.judul || "-"}"
-                        </p>
-                      </td>
+                        {/* JUDUL */}
+                        <td className="px-8 py-8">
+                          <p className="text-[13px] font-bold text-slate-600 leading-relaxed italic line-clamp-2 pr-6">
+                            "{item.proposal?.judul || "-"}"
+                          </p>
+                        </td>
 
-                      {/* BIDANG */}
-                      <td className="px-8 py-8 text-center">
-                        <span className="inline-block px-3 py-1 bg-slate-100 text-slate-500 text-[10px] font-black uppercase tracking-wider rounded-lg border border-slate-200">
-                          {/* @ts-ignore */}
-                          {item.proposal?.bidang || "-"}
-                        </span>
-                      </td>
+                        {/* BIDANG */}
+                        <td className="px-8 py-8 text-center">
+                          <span className="inline-block px-3 py-1 bg-slate-100 text-slate-500 text-[10px] font-black uppercase tracking-wider rounded-lg border border-slate-200">
+                            {item.proposal?.bidang || "-"}
+                          </span>
+                        </td>
 
-                      {/* AKSI */}
-                      <td className="px-8 py-8 text-center">
-                        <Link href={`/kaprodi/dashboardkaprodi/penjadwalanseminar?id=${item.id}`}>
-                          <button className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-slate-200 active:scale-95 group/btn">
-                            ATUR JADWAL 
-                            <ArrowRight size={14} className="group-hover/btn:translate-x-1 transition-transform" />
-                          </button>
-                        </Link>
-                      </td>
-                    </tr>
-                  ))
+                        {/* AKSI */}
+                        <td className="px-8 py-8 text-center">
+                          <Link href={`/kaprodi/dashboardkaprodi/penjadwalanseminar?id=${item.id}`}>
+                            <button className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-slate-200 active:scale-95 group/btn">
+                              ATUR JADWAL 
+                              <ArrowRight size={14} className="group-hover/btn:translate-x-1 transition-transform" />
+                            </button>
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
           </div>
-
-          
         </div>
-
       </main>
     </div>
   );

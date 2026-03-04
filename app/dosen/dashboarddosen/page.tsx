@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { User, ArrowRight, LayoutDashboard, Calendar, ClipboardList } from "lucide-react";
+import { User, ArrowRight, LayoutDashboard, Calendar, ClipboardList, Megaphone} from "lucide-react";
 import { mapStatusToUI } from "@/lib/mapStatusToUI";
 import { supabase } from "@/lib/supabaseClient";
 import Link from "next/link"; 
@@ -22,122 +22,171 @@ interface StudentData {
   pembimbing2: string;
 }
 
-// ... (imports tetap sama)
-
 export default function DashboardDosenPage() {
   const [stats, setStats] = useState<DashboardStat[]>([
-    { count: 0, label: "Mahasiswa bimbingan", icon: <User size={24} />, color: "blue" },
-    { count: 0, label: "Proposal Menunggu Persetujuan", icon: <ClipboardList size={24} />, color: "amber" }
+    { count: 0, label: "Mahasiswa Bimbingan Aktif", icon: <User size={24} />, color: "blue" },
+    { count: 0, label: "Mahasiswa Mengajukan Anda Sebagai Pembimbing", icon: <ClipboardList size={24} />, color: "amber" }
   ]);
   
   const [students, setStudents] = useState<StudentData[]>([]);
   const [loading, setLoading] = useState(true);
   const [dosenName, setDosenName] = useState<string>("");
+  const [bannerText, setBannerText] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
-  try {
-    setLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+      try {
+        setLoading(true);
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("nama")
-      .eq("id", user.id)
-      .single();
-    
-    if (profile) setDosenName(profile.nama);
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("nama")
+          .eq("id", user.id)
+          .single();
+        
+        if (profile) setDosenName(profile.nama);
 
-    // 1. FETCH DATA DENGAN RELASI MENDALAM (IDENTIK DENGAN KAPRODI)
-    const { data: bimbinganData, error } = await supabase
-      .from("thesis_supervisors")
-      .select(`
-        proposal_id,
-        role,
-        proposal:proposals (
-          id, judul, status,
-          user:profiles ( nama, npm ),
-          seminar:seminar_requests ( status, approved_by_p1, approved_by_p2, created_at ),
-          sidang:sidang_requests ( id ),
-          docs:seminar_documents ( status ),
-          supervisors:thesis_supervisors ( role, dosen_id, profiles ( nama ) ),
-          sessions:guidance_sessions ( dosen_id, kehadiran_mahasiswa, session_feedbacks ( status_revisi ) )
-        )
-      `)
-      .eq("dosen_id", user.id);
-    
-    if (error) throw error;
+        const { data: activeBanner } = await supabase
+          .from("broadcasts")
+          .select("judul, konten")
+          .eq("is_active", true)
+          .in("target_audiens", ["Semua (Dosen & Mahasiswa)", "Dosen Saja"])
+          .maybeSingle();
 
-    let countProposalWait = 0;
+        if (activeBanner) {
+           // Menggabungkan Judul dan Konten untuk di-scroll
+           setBannerText(`PENGUMUMAN: ${activeBanner.judul} - ${activeBanner.konten}`);
+        }
 
-    const mappedStudents: StudentData[] = (bimbinganData || []).map((item: any) => {
-      const p = item.proposal;
-      
-      // A. Ambil Seminar Request Terbaru (Mencegah data duplikat FALSE)
-      const activeSeminar = p.seminar?.sort((a: any, b: any) => 
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      )[0] || null;
 
-      // B. Cek Sidang & Berkas
-      const hasSidang = Array.isArray(p.sidang) && p.sidang.length > 0;
-      const verifiedDocsCount = p.docs?.filter((d: any) => d.status === 'Lengkap').length || 0;
+        // =========================================================
+        // 1. HITUNG PROPOSAL YANG MENUNGGU RESPON DOSEN INI
+        // =========================================================
+        const { data: propData } = await supabase
+          .from("proposals")
+          .select(`id, proposal_recommendations(dosen_id), thesis_supervisors(dosen_id)`);
 
-      // C. Hitung Bimbingan P1 (Utama) & P2 (Pendamping)
-      let p1Count = 0;
-      let p2Count = 0;
-      p.supervisors?.forEach((sp: any) => {
-        const count = p.sessions?.filter((s: any) => 
-          s.dosen_id === sp.dosen_id && 
-          s.kehadiran_mahasiswa === 'hadir' &&
-          s.session_feedbacks?.[0]?.status_revisi === "disetujui"
-        ).length || 0;
+        let pendingRequestsCount = 0;
+        if (propData) {
+          propData.forEach((p: any) => {
+            const isRecommended = p.proposal_recommendations?.some((r: any) => r.dosen_id === user.id);
+            const hasResponded = p.thesis_supervisors?.some((s: any) => s.dosen_id === user.id);
+            // Hitung jika dia direkomendasikan TAPI belum menjawab
+            if (isRecommended && !hasResponded) {
+              pendingRequestsCount++;
+            }
+          });
+        }
 
-        if (sp.role === "utama") p1Count = count;
-        else if (sp.role === "pendamping") p2Count = count;
-      });
+        // =========================================================
+        // 2. FETCH DATA MAHASISWA BIMBINGAN (DENGAN ANTI-LEAK)
+        // =========================================================
+        const { data: bimbinganData, error } = await supabase
+          .from("thesis_supervisors")
+          .select(`
+            proposal_id,
+            role,
+            status,
+            proposal:proposals (
+              id, judul, status,
+              user:profiles ( nama, npm ),
+              seminar:seminar_requests ( status, approved_by_p1, approved_by_p2, created_at ),
+              sidang:sidang_requests ( id ),
+              docs:seminar_documents ( status ),
+              supervisors:thesis_supervisors ( role, dosen_id, profiles ( nama ) ),
+              sessions:guidance_sessions ( dosen_id, kehadiran_mahasiswa, session_feedbacks ( status_revisi ) )
+            )
+          `)
+          .eq("dosen_id", user.id)
+          .eq("status", "accepted"); // Hanya ambil yang sudah di-ACC Dosen
+        
+        if (error) throw error;
 
-      // D. Tentukan Kelayakan (isEligible)
-      const approvedByAll = !!activeSeminar?.approved_by_p1 && !!activeSeminar?.approved_by_p2;
-      const isEligible = p1Count >= 10 && p2Count >= 10 && approvedByAll;
+        const rawStudents = (bimbinganData || []).map((item: any) => {
+          const p = item.proposal;
 
-      // E. Panggil Mapper Global (IDENTIK DENGAN DASHBOARD LAIN)
-      const ui = mapStatusToUI({
-        proposalStatus: p.status,
-        hasSeminar: !!activeSeminar,
-        seminarStatus: activeSeminar?.status,
-        hasSidang: hasSidang,
-        uploadedDocsCount: p.docs?.length || 0,
-        verifiedDocsCount: verifiedDocsCount,
-        isEligible: isEligible
-      });
+          // 🔥 PROTEKSI ANTI-LEAK: 
+          // Cek apakah Kaprodi SUDAH menetapkan proposal ini
+          const inactiveStatuses = [
+            "Pending", "Pengajuan Proposal", "Ditinjau Kaprodi", 
+            "Menunggu Persetujuan Dosbing", "Ditolak Dosbing", "Ditolak", "Siap Ditetapkan"
+          ];
+          
+          if (!p || inactiveStatuses.includes(p.status)) {
+            return null; // Abaikan dan jangan tampilkan di daftar
+          }
+          
+          // A. Ambil Seminar Request Terbaru
+          const activeSeminar = p.seminar?.sort((a: any, b: any) => 
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          )[0] || null;
 
-      if (p.status === "Menunggu Persetujuan Dosbing") countProposalWait++;
+          // B. Cek Sidang & Berkas
+          const hasSidang = Array.isArray(p.sidang) && p.sidang.length > 0;
+          const verifiedDocsCount = p.docs?.filter((d: any) => d.status === 'Lengkap').length || 0;
 
-      // F. Cari Nama Partner Bimbingan (Co-Pembimbing)
-      const partner = p.supervisors?.find((s: any) => s.dosen_id !== user.id);
+          // C. Hitung Bimbingan P1 (Utama) & P2 (Pendamping)
+          let p1Count = 0;
+          let p2Count = 0;
+          p.supervisors?.forEach((sp: any) => {
+            const count = p.sessions?.filter((s: any) => 
+              s.dosen_id === sp.dosen_id && 
+              s.kehadiran_mahasiswa === 'hadir' &&
+              s.session_feedbacks?.[0]?.status_revisi === "disetujui"
+            ).length || 0;
 
-      return {
-        id: p.id,
-        name: p.user?.nama || "Tanpa Nama",
-        npm: p.user?.npm || "-",
-        status: ui.label, // Status Label sekarang sinkron
-        pembimbing2: partner?.profiles?.nama || "-" 
-      };
-    });
+            if (sp.role === "utama") p1Count = count;
+            else if (sp.role === "pendamping") p2Count = count;
+          });
 
-    setStudents(mappedStudents);
-    setStats([
-      { count: mappedStudents.length, label: "Mahasiswa Bimbingan", icon: <User size={24} />, color: "blue" },
-      { count: countProposalWait, label: "Proposal Menunggu Persetujuan", icon: <ClipboardList size={24} />, color: "amber" }
-    ]);
+          // D. Tentukan Kelayakan (isEligible)
+          const approvedByAll = !!activeSeminar?.approved_by_p1 && !!activeSeminar?.approved_by_p2;
+          const isEligible = p1Count >= 10 && p2Count >= 10 && approvedByAll;
 
-  } catch (err) {
-    console.error("Error fetching dashboard:", err);
-  } finally {
-    setLoading(false);
-  }
-};
+          // E. Panggil Mapper Global
+          const ui = mapStatusToUI({
+            proposalStatus: p.status,
+            hasSeminar: !!activeSeminar,
+            seminarStatus: activeSeminar?.status,
+            hasSidang: hasSidang,
+            uploadedDocsCount: p.docs?.length || 0,
+            verifiedDocsCount: verifiedDocsCount,
+            isEligible: isEligible
+          });
+
+          // F. Cari Nama Partner Bimbingan (Co-Pembimbing)
+          const partner = p.supervisors?.find((s: any) => s.dosen_id !== user.id);
+
+          return {
+            id: p.id,
+            name: p.user?.nama || "Tanpa Nama",
+            npm: p.user?.npm || "-",
+            status: ui.label,
+            pembimbing2: partner?.profiles?.nama || "-" 
+          };
+        });
+
+        // Hapus elemen "null" akibat anti-leak filter
+        const mappedStudents = rawStudents.filter(Boolean) as StudentData[];
+
+        setStudents(mappedStudents);
+
+        // =========================================================
+        // 3. SET CARD STATISTIK
+        // =========================================================
+        setStats([
+          { count: mappedStudents.length, label: "Mahasiswa Bimbingan Aktif", icon: <User size={24} />, color: "blue" },
+          { count: pendingRequestsCount, label: "Mahasiswa Mengajukan Anda Sebagai Pembimbing", icon: <ClipboardList size={24} />, color: "amber" }
+        ]);
+
+      } catch (err) {
+        console.error("Error fetching dashboard:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
 
     fetchData();
   }, []);
@@ -156,17 +205,38 @@ export default function DashboardDosenPage() {
     }
   };
 
-  // ... (render logic tetap sama)
-
   return (
     <div className="flex min-h-screen bg-[#F8F9FB] font-sans text-slate-700">
 
       <main className="flex-1 flex flex-col h-screen overflow-hidden">
         
-
         {/* SCROLLABLE CONTENT */}
         <div className="flex-1 overflow-y-auto p-10 custom-scrollbar">
           <div className="max-w-[1400px] mx-auto">
+
+            {/* 🔥 BANNER PENGUMUMAN BERJALAN (DESAIN BARU YANG RAPI) */}
+            {bannerText && (
+              <div className="mb-10 max-w-5xl bg-blue-50 border border-blue-100 rounded-2xl p-4 flex items-center gap-5 shadow-md relative overflow-hidden">
+                {/* Ikon Statis */}
+                <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center shrink-0 shadow-md shadow-blue-300 z-10">
+                   <Megaphone size={20} className="text-white animate-pulse" />
+                </div>
+                
+                {/* Area Teks */}
+                <div className="flex-1 overflow-hidden relative">
+                   <p className="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em] mb-1">Pengumuman Terbaru</p>
+                   {/* Teks Berjalan */}
+                   <div className="animate-marquee whitespace-nowrap text-sm font-bold text-slate-700 flex">
+                     <span>{bannerText}</span>
+                     <span className="ml-16">{bannerText}</span>
+                     <span className="ml-16">{bannerText}</span>
+                   </div>
+                </div>
+
+                {/* Gradient Penutup (Biar teks hilangnya halus) */}
+                <div className="absolute top-0 right-0 w-24 h-full bg-gradient-to-l from-blue-50 to-transparent z-10 pointer-events-none"></div>
+              </div>
+            )}
             
             {/* GREETING */}
             <div className="mb-10">
@@ -192,7 +262,7 @@ export default function DashboardDosenPage() {
                     <span className="text-5xl font-black text-slate-800 block leading-none mb-2">
                       {loading ? "..." : stat.count}
                     </span>
-                    <span className="text-xs font-black text-slate-400 uppercase tracking-[0.15em]">
+                    <span className="text-[11px] font-black text-slate-400 uppercase tracking-[0.1em] max-w-[200px] block leading-tight">
                       {stat.label}
                     </span>
                   </div>
@@ -230,7 +300,7 @@ export default function DashboardDosenPage() {
                         <td colSpan={5} className="px-8 py-20 text-center">
                            <div className="flex flex-col items-center gap-3 opacity-30">
                               <Calendar size={60} />
-                              <p className="font-black uppercase tracking-widest text-sm">Belum ada data bimbingan</p>
+                              <p className="font-black uppercase tracking-widest text-sm">Belum ada data bimbingan aktif</p>
                            </div>
                         </td>
                       </tr>

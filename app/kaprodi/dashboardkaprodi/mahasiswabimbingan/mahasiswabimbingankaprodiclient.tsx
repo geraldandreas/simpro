@@ -4,6 +4,7 @@ import { JSX, useEffect, useState } from "react";
 import NotificationBell from '@/components/notificationBell';
 import { sendNotification } from "@/lib/notificationUtils";
 import Link from "next/link";
+import Image from "next/image";
 import { 
   Search, 
   Bell, 
@@ -23,6 +24,7 @@ export interface MahasiswaBimbingan {
   proposal_id: string;
   nama: string;
   npm: string;
+  avatar_url?: string | null;
   uiStatusLabel: string;
   uiStatusColor: string;
 }
@@ -109,7 +111,7 @@ const fetchMahasiswaBimbingan = async () => {
       .select(`
         proposal:proposals (
           id, status,
-          mahasiswa:profiles ( nama, npm ),
+          mahasiswa:profiles ( nama, npm, avatar_url ),
           seminar:seminar_requests ( status, approved_by_p1, approved_by_p2, created_at ),
           sidang:sidang_requests ( id ),
           docs:seminar_documents ( status ),
@@ -121,7 +123,9 @@ const fetchMahasiswaBimbingan = async () => {
 
     if (error) throw error;
 
-    const mapped: MahasiswaBimbingan[] = (data || []).map((row: any) => {
+    const validBimbingan = (data || []).filter((row: any) => row.proposal?.status === "Diterima");
+    
+    const mapped: MahasiswaBimbingan[] = validBimbingan.map((row: any) => { 
       const p = row.proposal;
       
       // A. Ambil Seminar Request Terbaru
@@ -168,6 +172,7 @@ const fetchMahasiswaBimbingan = async () => {
         proposal_id: p.id,
         nama: p.mahasiswa.nama,
         npm: p.mahasiswa.npm,
+        avatar_url: p.mahasiswa.avatar_url || null,
         uiStatusLabel: ui.label,
         uiStatusColor: ui.color,
       };
@@ -383,9 +388,20 @@ const formatDateInput = () => {
                       <tr key={mhs.proposal_id} className="group hover:bg-blue-50/30 transition-all duration-300">
                         <td className="px-8 py-8">
                           <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-black group-hover:bg-blue-600 group-hover:text-white transition-all">
-                              {mhs.nama.charAt(0)}
+                            {/* 🔥 LOGIKA RENDER FOTO/INISIAL DI SINI */}
+                            <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-black group-hover:bg-blue-600 group-hover:text-white transition-all relative overflow-hidden shrink-0 border border-slate-200">
+                              {mhs.avatar_url ? (
+                                <Image 
+                                  src={mhs.avatar_url} 
+                                  alt={mhs.nama} 
+                                  layout="fill" 
+                                  objectFit="cover" 
+                                />
+                              ) : (
+                                mhs.nama.charAt(0).toUpperCase()
+                              )}
                             </div>
+
                             <div>
                               <p className="text-sm font-black text-slate-800 leading-none">{mhs.nama}</p>
                               <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1.5">{mhs.npm}</p>
@@ -400,16 +416,13 @@ const formatDateInput = () => {
                         </td>
 
                         <td className="px-8 py-8 text-center">
-                          <Link
-                            href={
-                              mhs.uiStatusLabel === "Pengajuan Proposal"
-                                ? `/kaprodi/dashboardkaprodi/accproposal?id=${mhs.proposal_id}`
-                                : `/kaprodi/dashboardkaprodi/detailmahasiswabimbingan?id=${mhs.proposal_id}`
-                            }
-                            className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-blue-600 text-white text-[10px] font-black rounded-xl transition-all shadow-lg active:scale-95 uppercase tracking-widest"
-                          >
-                            Detail <ArrowRight size={14} />
-                          </Link>
+                         {/* DIBERSIHKAN: Hanya mengarah ke halaman Detail Bimbingan */}
+                        <Link
+                         href={`/kaprodi/dashboardkaprodi/detailmahasiswabimbingan?id=${mhs.proposal_id}`}
+                         className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-blue-600 text-white text-[10px] font-black rounded-xl transition-all shadow-lg active:scale-95 uppercase tracking-widest"
+                  >
+                         Detail <ArrowRight size={14} />
+                        </Link>
                         </td>
                       </tr>
                     ))

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image"; // 🔥 Import Image dari Next.js
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
@@ -20,6 +21,7 @@ export default function Sidebar() {
 
   const [displayName, setDisplayName] = useState("Loading...");
   const [role, setRole] = useState("Mahasiswa");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null); // 🔥 State untuk avatar
 
   const menuItems = [
     { icon: LayoutDashboard, label: "Dashboard", href: "/mahasiswa/dashboard" },
@@ -39,10 +41,10 @@ export default function Sidebar() {
 
       if (!user) return;
 
-      // 1️⃣ Ambil dari table profiles
+      // 1️⃣ Ambil dari table profiles (🔥 Tambahkan avatar_url)
       const { data: profile } = await supabase
         .from("profiles")
-        .select("nama, role")
+        .select("nama, role, avatar_url")
         .eq("id", user.id)
         .single();
 
@@ -59,11 +61,16 @@ export default function Sidebar() {
       if (profile?.role) {
         setRole(profile.role);
       }
+
+      // 🔥 Set Avatar URL jika ada
+      if (profile?.avatar_url) {
+        setAvatarUrl(profile.avatar_url);
+      }
     };
 
     loadUser();
 
-    // 🔄 Auto refresh kalau profile berubah
+    // 🔄 Auto refresh kalau profile berubah (termasuk avatar)
     const channel = supabase
       .channel("profile-changes")
       .on(
@@ -78,6 +85,9 @@ export default function Sidebar() {
           if (updated?.nama) {
             setDisplayName(updated.nama);
           }
+          if (updated?.avatar_url !== undefined) { // 🔥 Deteksi perubahan avatar
+            setAvatarUrl(updated.avatar_url);
+          }
         }
       )
       .subscribe();
@@ -90,18 +100,28 @@ export default function Sidebar() {
   return (
     <aside className="w-64 bg-white border-r border-gray-200 flex flex-col fixed h-full z-30">
       <div className="p-6 flex items-center gap-3 border-b border-gray-50">
-        <div className="w-10 h-10 bg-blue-800 rounded-full flex items-center justify-center text-white font-bold text-lg">
-          {displayName.charAt(0).toUpperCase()}
+        {/* 🔥 Ganti kotak inisial dengan logika Avatar/Inisial */}
+        <div className="w-10 h-10 bg-blue-800 rounded-full flex items-center justify-center text-white font-bold text-lg relative overflow-hidden shrink-0">
+          {avatarUrl ? (
+            <Image 
+              src={avatarUrl} 
+              alt="Profile" 
+              layout="fill" 
+              objectFit="cover" 
+            />
+          ) : (
+            displayName.charAt(0).toUpperCase()
+          )}
         </div>
-        <div>
-          <p className="text-sm font-bold text-blue-900 leading-none">
+        <div className="min-w-0"> {/* 🔥 Tambahkan min-w-0 agar nama yang panjang terpotong rapi */}
+          <p className="text-sm font-bold text-blue-900 leading-none truncate">
             {displayName}
           </p>
-          <p className="text-xs text-blue-400 mt-1">{role}</p>
+          <p className="text-xs text-blue-400 mt-1 capitalize">{role}</p>
         </div>
       </div>
 
-      <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
+      <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto custom-scrollbar">
         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-2 mb-2">
           MENU
         </p>
@@ -141,7 +161,7 @@ export default function Sidebar() {
       </nav>
 
       {/* FOOTER */}
-      <div className="p-6 border-t border-gray-100 flex items-center justify-between">
+      <div className="p-6 border-t border-gray-100 flex items-center justify-between bg-white">
         <div className="flex items-center gap-3">
           <Link href="/login" title="Logout">
             <LogOut

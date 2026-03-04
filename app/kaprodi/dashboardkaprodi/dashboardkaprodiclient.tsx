@@ -2,6 +2,7 @@
 
 import React, {useState, useEffect} from 'react';
 import NotificationBell from '@/components/notificationBell';
+import Image from "next/image";
 import { 
   Bell, 
   Search, 
@@ -11,6 +12,7 @@ import {
   Clock, 
   GraduationCap
 } from 'lucide-react';
+
 
 
 import { mapStatusToUI } from "@/lib/mapStatusToUI";
@@ -27,6 +29,7 @@ interface MahasiswaBimbingan {
   proposal_id: string;
   nama: string;
   npm: string;
+  avatar_url?: string | null;
   uiStatusLabel: string;
   uiStatusColor: string;
 }
@@ -103,7 +106,7 @@ const fetchMahasiswaBimbingan = async (uid: string) => {
       .select(`
         proposal:proposals (
           id, status,
-          mahasiswa:profiles ( nama, npm ),
+          mahasiswa:profiles ( nama, npm , avatar_url),
           seminar:seminar_requests ( status, approved_by_p1, approved_by_p2, created_at ),
           sidang:sidang_requests ( id ),
           docs:seminar_documents ( status ),
@@ -115,7 +118,9 @@ const fetchMahasiswaBimbingan = async (uid: string) => {
 
     if (error) throw error;
 
-    const mapped: MahasiswaBimbingan[] = (data || []).map((row: any) => {
+    const validBimbingan = (data || []).filter((row: any) => row.proposal?.status === "Diterima");
+
+    const mapped: MahasiswaBimbingan[] = validBimbingan.map((row: any) => {
       const p = row.proposal;
       
       // 1. Ambil Seminar Request Terbaru
@@ -163,12 +168,14 @@ const fetchMahasiswaBimbingan = async (uid: string) => {
         proposal_id: p.id,
         nama: p.mahasiswa.nama,
         npm: p.mahasiswa.npm,
+        avatar_url: p.mahasiswa.avatar_url || null,
         uiStatusLabel: ui.label,
         uiStatusColor: ui.color,
       };
     });
 
-    setStudents(mapped);
+   setStudents(mapped);
+setTotalBimbingan(mapped.length);
   } catch (err) {
     console.error("❌ Gagal load mahasiswa bimbingan:", err);
   }
@@ -225,8 +232,6 @@ useEffect(() => {
   init();
 }, []);
 
-
-  // ... rest of your return code
   return (
     <div className="flex flex-col min-h-screen bg-[#F4F7FE] pb-12 font-sans text-slate-700">
       
@@ -328,9 +333,20 @@ useEffect(() => {
                       <tr key={mhs.proposal_id} className="group hover:bg-blue-50/30 transition-all duration-300">
                         <td className="px-8 py-8">
                           <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-black group-hover:bg-blue-600 group-hover:text-white transition-all">
-                              {mhs.nama?.charAt(0) ?? "?"}
+                           {/* 🔥 WADAH AVATAR / INISIAL MAHASISWA */}
+                            <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-black group-hover:bg-blue-600 group-hover:text-white transition-all relative overflow-hidden shrink-0 border border-slate-200">
+                              {mhs.avatar_url ? (
+                                <Image 
+                                  src={mhs.avatar_url} 
+                                  alt={mhs.nama} 
+                                  layout="fill" 
+                                  objectFit="cover" 
+                                />
+                              ) : (
+                                mhs.nama?.charAt(0) ?? "?"
+                              )}
                             </div>
+
                             <div>
                               <p className="text-sm font-black text-slate-800 leading-none">{mhs.nama}</p>
                               <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1.5">{mhs.npm}</p>
@@ -346,11 +362,7 @@ useEffect(() => {
 
                         <td className="px-8 py-8 text-center">
                           <Link
-                            href={
-                              mhs.uiStatusLabel === "Pengajuan Proposal"
-                                ? `/kaprodi/dashboardkaprodi/accproposal?id=${mhs.proposal_id}`
-                                : `/kaprodi/dashboardkaprodi/detailmahasiswabimbingan?id=${mhs.proposal_id}`
-                            }
+                           href={`/kaprodi/dashboardkaprodi/detailmahasiswabimbingan?id=${mhs.proposal_id}`}
                             className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-blue-600 text-white text-[10px] font-black rounded-xl transition-all shadow-lg active:scale-95 uppercase tracking-widest"
                           >
                             Detail <ArrowRight size={14} />

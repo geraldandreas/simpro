@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+/* 🔥 TAMBAHAN UNTUK ANIMASI MARQUEE BANNER */
+@theme {
+  --animate-marquee: marquee 25s linear infinite;
+
+  @keyframes marquee {
+    0% { transform: translateX(0%); }
+    100% { transform: translateX(-100%); }
+  }
+}
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -23,6 +33,7 @@
     --foreground: #000000;
   }
 }
+
 .sidebar-icon {
   width: 52px;
   height: 52px;
@@ -59,8 +70,6 @@
 .sidebar-icon.active svg {
   filter: invert(0) brightness(0);
 }
-
-
 
 body {
   background: var(--background);
