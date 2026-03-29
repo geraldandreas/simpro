@@ -2,28 +2,19 @@
 
 import React, {useState, useEffect} from 'react';
 import NotificationBell from '@/components/notificationBell';
-import Image from "next/image";
 import { 
-  Bell, 
-  Search, 
-  MessageSquare, 
   Users, 
   FileCheck, 
   Clock, 
-  GraduationCap
-} from 'lucide-react';
-
-
-
-import { mapStatusToUI } from "@/lib/mapStatusToUI";
-
-import Link from "next/link";
-import {  
- 
+  Calendar,
+  LayoutDashboard,
   User,
-  ArrowRight,
-
-} from "lucide-react";
+  ArrowRight
+} from 'lucide-react';
+import { mapStatusToUI } from "@/lib/mapStatusToUI";
+import Link from "next/link";
+import { supabase } from "@/lib/supabaseClient";
+import Image from "next/image";
 
 interface MahasiswaBimbingan {
   proposal_id: string;
@@ -32,358 +23,367 @@ interface MahasiswaBimbingan {
   avatar_url?: string | null;
   uiStatusLabel: string;
   uiStatusColor: string;
+  pembimbing2: string; 
 }
-
-import { supabase } from "@/lib/supabaseClient";
 
 export default function DashboardKaprodiClient() {
   const [totalBimbingan, setTotalBimbingan] = React.useState<number>(0);
   const [loading, setLoading] = React.useState(true);
   const [students, setStudents] = useState<MahasiswaBimbingan[]>([]);
   const [totalSeminarSiap, setTotalSeminarSiap] = useState(0);
- const [dosenName, setDosenName] = useState<string>("");
+  const [dosenName, setDosenName] = useState<string>("");
+  const [totalProposalPending, setTotalProposalPending] = useState(0);
 
-
-
-  
-const [totalProposalPending, setTotalProposalPending] = useState(0);
-const fetchSeminarSiap = async () => {
-  try {
-    const { data, error } = await supabase
-      .from("seminar_requests")
-      .select(`
-        id,
-        status,
-        seminar_schedules ( id )
-      `)
-      .in("status", ["Disetujui", "Menunggu Penjadwalan"]);
-
-    if (error) throw error;
-
-    const siap = (data || []).filter(
-      (s: any) =>
-        !s.seminar_schedules || s.seminar_schedules.length === 0
-    );
-
-    setTotalSeminarSiap(siap.length);
-  } catch (err) {
-    console.error("❌ Gagal hitung seminar siap dijadwalkan:", err);
-  }
-};
-
-
-
-
-const fetchProposalPending = async () => {
-  try {
-    const { data, error } = await supabase
-      .from("proposals")
-      .select(`
-        id,
-        thesis_supervisors ( id )
-      `);
-
-    if (error) throw error;
-
-    const pending = (data || []).filter(
-      (p: any) => !p.thesis_supervisors || p.thesis_supervisors.length === 0
-    );
-
-    setTotalProposalPending(pending.length);
-  } catch (err) {
-    console.error("❌ Gagal hitung proposal pending:", err);
-  }
-};
-
-
-
- // ================= FETCH LOGIC (SINKRON DENGAN GLOBAL) =================
-
-const fetchMahasiswaBimbingan = async (uid: string) => {
-  try {
-    const { data, error } = await supabase
-      .from("thesis_supervisors")
-      .select(`
-        proposal:proposals (
-          id, status,
-          mahasiswa:profiles ( nama, npm , avatar_url),
-          seminar:seminar_requests ( status, approved_by_p1, approved_by_p2, created_at ),
-          sidang:sidang_requests ( id ),
-          docs:seminar_documents ( status ),
-          supervisors:thesis_supervisors ( role, dosen_id ),
-          sessions:guidance_sessions ( dosen_id, kehadiran_mahasiswa, session_feedbacks ( status_revisi ) )
-        )
-      `)
-      .eq("dosen_id", uid);
-
-    if (error) throw error;
-
-    const validBimbingan = (data || []).filter((row: any) => row.proposal?.status === "Diterima");
-
-    const mapped: MahasiswaBimbingan[] = validBimbingan.map((row: any) => {
-      const p = row.proposal;
-      
-      // 1. Ambil Seminar Request Terbaru
-      const activeSeminar = p.seminar?.sort((a: any, b: any) => 
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      )[0] || null;
-      
-      // 2. Cek Data Sidang
-      const hasSidang = Array.isArray(p.sidang) && p.sidang.length > 0;
-
-      // 3. Hitung Berkas Tervalidasi Tendik
-      const docs = p.docs || [];
-      const verifiedCount = docs.filter((d: any) => d.status === 'Lengkap').length;
-
-      // 4. Hitung Bimbingan P1 (Utama) & P2 (Pendamping)
-      let p1Count = 0;
-      let p2Count = 0;
-      p.supervisors?.forEach((sp: any) => {
-        const count = p.sessions?.filter((s: any) => 
-          s.dosen_id === sp.dosen_id && 
-          s.kehadiran_mahasiswa === 'hadir' &&
-          s.session_feedbacks?.[0]?.status_revisi === "disetujui"
-        ).length || 0;
-
-        if (sp.role === "utama") p1Count = count;
-        else if (sp.role === "pendamping") p2Count = count;
-      });
-
-      // 5. Kelayakan (IsEligible)
-      const approvedByAll = !!activeSeminar?.approved_by_p1 && !!activeSeminar?.approved_by_p2;
-      const isEligible = p1Count >= 10 && p2Count >= 10 && approvedByAll;
-
-      // 6. Panggil Mapper Global
-      const ui = mapStatusToUI({ 
-        proposalStatus: p.status, 
-        hasSeminar: !!activeSeminar,
-        seminarStatus: activeSeminar?.status,
-        hasSidang: hasSidang,
-        verifiedDocsCount: verifiedCount,
-        uploadedDocsCount: docs.length,
-        isEligible: isEligible
-      });
-
-      return {
-        proposal_id: p.id,
-        nama: p.mahasiswa.nama,
-        npm: p.mahasiswa.npm,
-        avatar_url: p.mahasiswa.avatar_url || null,
-        uiStatusLabel: ui.label,
-        uiStatusColor: ui.color,
-      };
-    });
-
-   setStudents(mapped);
-setTotalBimbingan(mapped.length);
-  } catch (err) {
-    console.error("❌ Gagal load mahasiswa bimbingan:", err);
-  }
-};
- 
-
-  const fetchStats = async (uid: string) => {
-  try {
-    const { count, error } = await supabase
-      .from("thesis_supervisors")
-      .select("*", { count: "exact", head: true })
-      .eq("dosen_id", uid);
-
-    if (error) throw error;
-    setTotalBimbingan(count || 0);
-  } catch (err) {
-    console.error("Error fetching stats:", err);
-  }
-};
-
-
-useEffect(() => {
-  const init = async () => {
+  const fetchSeminarSiap = async () => {
     try {
-      setLoading(true);
+      const { data, error } = await supabase
+        .from("seminar_requests")
+        .select(`
+          id,
+          status,
+          seminar_schedules ( id )
+        `)
+        .in("status", ["Disetujui", "Menunggu Penjadwalan"]);
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (error) throw error;
 
-      // ambil nama kaprodi
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("nama")
-        .eq("id", user.id)
-        .maybeSingle();
+      const siap = (data || []).filter(
+        (s: any) => !s.seminar_schedules || s.seminar_schedules.length === 0
+      );
 
-      setDosenName(profile?.nama ?? "Kaprodi");
-
-     await Promise.all([
-  fetchStats(user.id),
-  fetchProposalPending(),
-  fetchSeminarSiap(),
-  fetchMahasiswaBimbingan(user.id), 
-]);
-
-
+      setTotalSeminarSiap(siap.length);
     } catch (err) {
-      console.error("Dashboard kaprodi error:", err);
-    } finally {
-      setLoading(false);
+      console.error("❌ Gagal hitung seminar siap dijadwalkan:", err);
     }
   };
 
-  init();
-}, []);
+  const fetchProposalPending = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("proposals")
+        .select(`
+          id,
+          thesis_supervisors ( id )
+        `);
+
+      if (error) throw error;
+
+      const pending = (data || []).filter(
+        (p: any) => !p.thesis_supervisors || p.thesis_supervisors.length === 0
+      );
+
+      setTotalProposalPending(pending.length);
+    } catch (err) {
+      console.error("❌ Gagal hitung proposal pending:", err);
+    }
+  };
+
+  // ================= FETCH LOGIC =================
+  const fetchMahasiswaBimbingan = async (uid: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("thesis_supervisors")
+        .select(`
+          proposal:proposals (
+            id, status,
+            user:profiles ( nama, npm , avatar_url),
+            seminar:seminar_requests ( status, approved_by_p1, approved_by_p2, created_at ),
+            sidang:sidang_requests ( id ),
+            docs:seminar_documents ( status ),
+            supervisors:thesis_supervisors ( role, dosen_id, profiles ( nama ) ),
+            sessions:guidance_sessions ( dosen_id, kehadiran_mahasiswa, session_feedbacks ( status_revisi ) )
+          )
+        `)
+        .eq("dosen_id", uid);
+
+      if (error) throw error;
+
+      const validBimbingan = (data || []).filter((row: any) => row.proposal?.status === "Diterima");
+
+      const mapped: MahasiswaBimbingan[] = validBimbingan.map((row: any) => {
+        const p = row.proposal;
+        
+        const activeSeminar = p.seminar?.sort((a: any, b: any) => 
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        )[0] || null;
+        
+        const hasSidang = Array.isArray(p.sidang) && p.sidang.length > 0;
+        const docs = p.docs || [];
+        const verifiedCount = docs.filter((d: any) => d.status === 'Lengkap').length;
+
+        let p1Count = 0;
+        let p2Count = 0;
+        p.supervisors?.forEach((sp: any) => {
+          const count = p.sessions?.filter((s: any) => 
+            s.dosen_id === sp.dosen_id && 
+            s.kehadiran_mahasiswa === 'hadir' &&
+            s.session_feedbacks?.[0]?.status_revisi === "disetujui"
+          ).length || 0;
+
+          if (sp.role === "utama") p1Count = count;
+          else if (sp.role === "pendamping") p2Count = count;
+        });
+
+        const approvedByAll = !!activeSeminar?.approved_by_p1 && !!activeSeminar?.approved_by_p2;
+        const isEligible = p1Count >= 10 && p2Count >= 10 && approvedByAll;
+
+        const ui = mapStatusToUI({ 
+          proposalStatus: p.status, 
+          hasSeminar: !!activeSeminar,
+          seminarStatus: activeSeminar?.status,
+          hasSidang: hasSidang,
+          verifiedDocsCount: verifiedCount,
+          uploadedDocsCount: docs.length,
+          isEligible: isEligible
+        });
+
+        const partner = p.supervisors?.find((s: any) => s.dosen_id !== uid);
+
+        return {
+          proposal_id: p.id,
+          nama: p.user?.nama || "Tanpa Nama",
+          npm: p.user?.npm || "-",
+          avatar_url: p.user?.avatar_url || null,
+          uiStatusLabel: ui.label,
+          uiStatusColor: ui.color,
+          pembimbing2: partner?.profiles?.nama || "-" 
+        };
+      });
+
+      setStudents(mapped);
+      setTotalBimbingan(mapped.length);
+    } catch (err) {
+      console.error("❌ Gagal load mahasiswa bimbingan:", err);
+    }
+  };
+ 
+  const fetchStats = async (uid: string) => {
+    try {
+      const { count, error } = await supabase
+        .from("thesis_supervisors")
+        .select("*", { count: "exact", head: true })
+        .eq("dosen_id", uid);
+
+      if (error) throw error;
+      setTotalBimbingan(count || 0);
+    } catch (err) {
+      console.error("Error fetching stats:", err);
+    }
+  };
+
+  useEffect(() => {
+    const init = async () => {
+      try {
+        setLoading(true);
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("nama")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        setDosenName(profile?.nama ?? "Kaprodi");
+
+        await Promise.all([
+          fetchStats(user.id),
+          fetchProposalPending(),
+          fetchSeminarSiap(),
+          fetchMahasiswaBimbingan(user.id), 
+        ]);
+      } catch (err) {
+        console.error("Dashboard kaprodi error:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    init();
+  }, []);
+
+  const getStatusBadgeStyle = (status: string) => {
+    switch (status) {
+      case "Sidang Skripsi":
+      case "Seminar Hasil": return "bg-emerald-50 text-emerald-600 border-emerald-100";
+      case "Perbaikan Pasca Seminar": return "bg-orange-50 text-orange-600 border-orange-100";
+      case "Proses Kesiapan Seminar":
+      case "Verifikasi Berkas":
+      case "Unggah Dokumen Seminar": return "bg-blue-50 text-blue-600 border-blue-100"; 
+      case "Pengajuan Proposal": return "bg-amber-50 text-amber-600 border-amber-100"; 
+      case "Proses Bimbingan": return "bg-indigo-50 text-indigo-600 border-indigo-100"; 
+      default: return "bg-slate-50 text-slate-600 border-slate-100";
+    }
+  };
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#F4F7FE] pb-12 font-sans text-slate-700">
-      
-      {/* TOP HEADER - Glassmorphism Effect */}
-     <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
-               <div className="flex items-center gap-6">
-                 <div className="relative w-72 group">
-                 </div>
-               </div>
-     
-             <div className="flex items-center gap-6">
-         {/* KOMPONEN LONCENG BARU */}
-         <NotificationBell />
-         
-         <div className="h-8 w-[1px] bg-slate-200 mx-2" />
-     
-               <div className="flex items-center gap-6">
-                 {/* Minimalist SIMPRO Text */}
-                 <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
-                   Simpro
-                 </span>
-               </div>
-               </div>
-             </header>
+    <div className="flex flex-col min-h-screen bg-[#F8F9FB] pb-12 font-sans text-slate-700">
 
       <main className="p-10 max-w-[1400px] w-full mx-auto">
+        {/* 1. GREETING AREA (Ada Skeleton Nama Dosen) */}
         <div className="mb-10">
-          <h1 className="text-3xl font-black text-slate-800 tracking-tight"> Selamat Datang, {dosenName || "Dosen Pembimbing"}
+          <h1 className="text-3xl font-black text-slate-800 tracking-tight leading-none">
+            Selamat Datang, 
           </h1>
-
-          <p className="text-slate-500 font-medium mt-1">Pantau perkembangan akademik dan bimbingan mahasiswa Anda hari ini.</p>
+          {loading ? (
+             <div className="h-9 w-64 bg-slate-200 rounded-xl mt-2 animate-pulse"></div>
+          ) : (
+             <p className="text-blue-600 text-3xl font-black tracking-tight mt-2 ">
+               {dosenName || "Dosen Pembimbing"}.
+             </p>
+          )}
+          <p className="text-slate-500 font-medium mt-4">
+            Pantau perkembangan akademik dan bimbingan mahasiswa Anda hari ini.
+          </p>
         </div>
 
-        {/* STATS CARDS - Improved with Icons & Depth */}
-       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-10 justify-items-center">
+        {/* 2. STATS CARDS AREA (Ada Skeleton Angka) */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-10 justify-items-center">
           <StatCard 
-            count={loading ? "..." : totalBimbingan.toString()} 
+            count={totalBimbingan.toString()} 
             label="Mahasiswa" 
             subLabel="Bimbingan Aktif" 
             icon={<Users size={20} />} 
             color="blue" 
+            isLoading={loading}
           />
           <StatCard
-  count={loading ? "..." : totalProposalPending.toString()}
-  label="Proposal"
-  subLabel="Menunggu Review"
-  icon={<FileCheck size={20} />}
-  color="amber"
-/>
-
+            count={totalProposalPending.toString()}
+            label="Proposal"
+            subLabel="Menunggu Review"
+            icon={<FileCheck size={20} />}
+            color="amber"
+            isLoading={loading}
+          />
           <StatCard
-  count={loading ? "..." : totalSeminarSiap.toString()}
-  label="Seminar"
-  subLabel="Siap Dijadwalkan"
-  icon={<Clock size={20} />}
-  color="indigo"
-/>
-
-          
+            count={totalSeminarSiap.toString()}
+            label="Seminar"
+            subLabel="Siap Dijadwalkan"
+            icon={<Clock size={20} />}
+            color="indigo"
+            isLoading={loading}
+          />
         </div>
 
-        {/* TABLE SECTION - Improved Spacing & Design */}
-        <section className="bg-white rounded-[2rem] border border-white shadow-xl shadow-slate-200/50 overflow-hidden">
-          <div className="lg:col-span-8 bg-white rounded-[2rem] border border-white shadow-xl shadow-slate-200/50 overflow-hidden min-h-[600px]">
-            <div className="px-8 py-6 border-b border-slate-50 bg-slate-50/30 flex items-center gap-3">
-              <div className="p-2 bg-blue-600 rounded-lg text-white shadow-lg shadow-blue-100">
-                <User size={20} />
-              </div>
-              <h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">
-                Daftar Mahasiswa
-              </h2>
+        {/* 3. TABLE SECTION (Ada Skeleton Baris Tabel 5 Kolom) */}
+        <div className="bg-white rounded-[2.5rem] border border-white shadow-xl shadow-slate-200/50 overflow-hidden min-h-[500px]">
+          <div className="p-8 border-b border-slate-50 bg-slate-50/30 flex items-center gap-3">
+            <div className="p-2.5 bg-blue-600 rounded-xl text-white shadow-lg shadow-blue-200">
+              <LayoutDashboard size={20} />
             </div>
-            
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50/50 text-[11px] uppercase tracking-[0.15em] text-slate-400 font-black border-b border-slate-100">
-                    <th className="px-8 py-6">Mahasiswa</th>
-                    <th className="px-8 py-6 text-center">Progres Skripsi</th>
-                    <th className="px-8 py-6 text-center">Tindakan</th>
-                  </tr>
-                </thead>
+            <h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Daftar Mahasiswa Bimbingan</h2>
+          </div>
 
-                <tbody className="divide-y divide-slate-50">
-                  {loading ? (
-                    <tr>
-                      <td colSpan={3} className="px-8 py-20 text-center text-slate-400 font-bold animate-pulse">
-                        Menghubungkan ke database...
-                      </td>
-                    </tr>
-                  ) : students.length === 0 ? (
-                    <tr>
-                      <td colSpan={3} className="px-8 py-20 text-center text-slate-400 font-bold uppercase tracking-widest">
-                        Belum ada mahasiswa bimbingan.
-                      </td>
-                    </tr>
-                  ) : (
-                    students.map((mhs) => (
-                      <tr key={mhs.proposal_id} className="group hover:bg-blue-50/30 transition-all duration-300">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50/50 text-[11px] uppercase tracking-[0.15em] text-slate-400 font-black border-b border-slate-100">
+                  <th className="px-8 py-6">Mahasiswa</th>
+                  <th className="px-8 py-6 text-center">NPM</th>
+                  <th className="px-8 py-6 text-center">Status</th>
+                  <th className="px-8 py-6 text-center">Co-Pembimbing</th>
+                  <th className="px-8 py-6 text-center">Tindakan</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {loading ? (
+                  // 🔥 ANIMASI SKELETON LOADER UNTUK 5 KOLOM 🔥
+                  <>
+                    {[1, 2, 3].map((item) => (
+                      <tr key={item} className="border-b border-slate-50">
+                        {/* Skeleton Avatar & Nama */}
                         <td className="px-8 py-8">
-                          <div className="flex items-center gap-4">
-                           {/* 🔥 WADAH AVATAR / INISIAL MAHASISWA */}
-                            <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-black group-hover:bg-blue-600 group-hover:text-white transition-all relative overflow-hidden shrink-0 border border-slate-200">
-                              {mhs.avatar_url ? (
-                                <Image 
-                                  src={mhs.avatar_url} 
-                                  alt={mhs.nama} 
-                                  layout="fill" 
-                                  objectFit="cover" 
-                                />
-                              ) : (
-                                mhs.nama?.charAt(0) ?? "?"
-                              )}
-                            </div>
-
-                            <div>
-                              <p className="text-sm font-black text-slate-800 leading-none">{mhs.nama}</p>
-                              <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1.5">{mhs.npm}</p>
-                            </div>
+                          <div className="flex items-center gap-4 animate-pulse">
+                            <div className="w-12 h-12 rounded-xl bg-slate-200 shrink-0"></div>
+                            <div className="h-3 w-32 bg-slate-200 rounded-full"></div>
                           </div>
                         </td>
-
+                        {/* Skeleton NPM */}
                         <td className="px-8 py-8 text-center">
-                          <span className={`inline-block px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border shadow-sm ${mhs.uiStatusColor}`}>
-                            {mhs.uiStatusLabel}
-                          </span>
+                          <div className="h-3 w-20 bg-slate-200 rounded-full mx-auto animate-pulse"></div>
                         </td>
-
+                        {/* Skeleton Status */}
                         <td className="px-8 py-8 text-center">
-                          <Link
-                           href={`/kaprodi/dashboardkaprodi/detailmahasiswabimbingan?id=${mhs.proposal_id}`}
-                            className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-blue-600 text-white text-[10px] font-black rounded-xl transition-all shadow-lg active:scale-95 uppercase tracking-widest"
-                          >
-                            Detail <ArrowRight size={14} />
-                          </Link>
+                          <div className="h-7 w-32 bg-slate-200 rounded-full mx-auto animate-pulse"></div>
+                        </td>
+                        {/* Skeleton Co-Pembimbing */}
+                        <td className="px-8 py-8">
+                          <div className="flex items-center gap-2 animate-pulse">
+                            <div className="w-4 h-4 bg-slate-200 rounded-full shrink-0"></div>
+                            <div className="h-3 w-24 bg-slate-200 rounded-full"></div>
+                          </div>
+                        </td>
+                        {/* Skeleton Action Button */}
+                        <td className="px-8 py-8 text-center">
+                           <div className="h-10 w-28 bg-slate-200 rounded-2xl mx-auto animate-pulse"></div>
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+                    ))}
+                  </>
+                ) : students.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-8 py-20 text-center">
+                       <div className="flex flex-col items-center gap-3 opacity-30">
+                          <Calendar size={60} />
+                          <p className="font-black uppercase tracking-widest text-sm">Belum ada data bimbingan aktif</p>
+                       </div>
+                    </td>
+                  </tr>
+                ) : (
+                  students.map((student, idx) => (
+                    <tr key={idx} className="group hover:bg-blue-50/30 transition-all duration-300">
+                      <td className="px-8 py-8">
+                        <div className="flex items-center gap-4">
+                          <div className="h-12 w-12 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-black group-hover:bg-blue-600 group-hover:text-white transition-all shadow-inner uppercase overflow-hidden shrink-0">
+                            {student.avatar_url ? (
+                              <img src={student.avatar_url} alt={student.nama} className="w-full h-full object-cover" />
+                            ) : (
+                              student.nama.charAt(0)
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-black text-slate-800 truncate tracking-tight ">{student.nama}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-8 py-8 text-center">
+                        <span className="text-xs font-bold text-slate-400 tracking-tighter tabular-nums">{student.npm}</span>
+                      </td>
+                      <td className="px-8 py-8 text-center">
+                        <span className={`whitespace-nowrap px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border shadow-sm ${getStatusBadgeStyle(student.uiStatusLabel)}`}>
+                          {student.uiStatusLabel}
+                        </span>
+                      </td>
+                      <td className="px-8 py-8">
+                         <div className="flex items-center gap-2">
+                            <User size={14} className="text-slate-300" />
+                            <span className="text-xs font-bold text-slate-600 tracking-tight truncate max-w-[150px]">{student.pembimbing2}</span>
+                         </div>
+                      </td>
+                      <td className="px-8 py-8 text-center">
+                        <Link href={`/kaprodi/dashboardkaprodi/detailmahasiswabimbingan?id=${student.proposal_id}`}>
+                          <button className="inline-flex items-center gap-2 px-6 py-3 bg-slate-900 hover:bg-blue-600 text-white text-[10px] font-black uppercase tracking-[0.15em] rounded-2xl transition-all shadow-lg active:scale-95 group/btn">
+                            DETAIL <ArrowRight size={14} className="group-hover/btn:translate-x-1 transition-transform" />
+                          </button>
+                        </Link>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
-        </section>
+          
+          <div className="p-8 bg-slate-50/50 border-t border-slate-100 flex justify-center">
+          </div>
+        </div>
+
       </main>
     </div>
   );
 }
 
-// --- IMPROVED SUB-COMPONENTS ---
-
-function StatCard({ count, label, subLabel, icon, color }: any) {
+// --- SUB-COMPONENTS ---
+function StatCard({ count, label, subLabel, icon, color, isLoading }: any) {
   const colors: any = {
     blue: "text-blue-600 bg-blue-50 border-blue-100",
     amber: "text-amber-600 bg-amber-50 border-amber-100",
@@ -394,57 +394,26 @@ function StatCard({ count, label, subLabel, icon, color }: any) {
   return (
     <div className="bg-white p-8 rounded-[2rem] border border-white shadow-lg shadow-slate-200/50 
                     flex flex-col items-center justify-center text-center 
-                    hover:-translate-y-1 transition-all duration-300">
-      
-      {/* ICON */}
+                    hover:-translate-y-1 transition-all duration-300 w-full">
       <div className={`p-4 rounded-2xl mb-6 border ${colors[color]}`}>
         {icon}
       </div>
-
-      {/* COUNT */}
-      <span className="text-4xl font-black text-slate-800 tracking-tighter">
-        {count}
-      </span>
-
-      {/* LABEL */}
-      <p className="text-sm font-bold text-slate-800 uppercase mt-1">
+      
+      {/* 🔥 Menambahkan Skeleton di Angka Stat Card 🔥 */}
+      {isLoading ? (
+        <div className="h-10 w-16 bg-slate-200 rounded-xl animate-pulse mt-1 mb-1"></div>
+      ) : (
+        <span className="text-4xl font-black text-slate-800 tracking-tighter">
+          {count}
+        </span>
+      )}
+      
+      <p className="text-sm font-bold text-slate-800 mt-1">
         {label}
       </p>
-
-      {/* SUBLABEL */}
-      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">
-        ● {subLabel}
+      <p className="text-[10px] font-black text-slate-400 tracking-widest mt-2">
+        {subLabel}
       </p>
     </div>
-  );
-}
-
-
-function TableRow({ name, npm, status, lecturer2, statusColor }: any) {
-  return (
-    <tr className="hover:bg-blue-50/30 transition-all duration-300 group">
-      <td className="px-8 py-6">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-black group-hover:bg-blue-600 group-hover:text-white transition-all duration-300">
-            {name.charAt(0)}
-          </div>
-          <p className="text-sm font-black text-slate-800 leading-tight tracking-tight uppercase">{name}</p>
-        </div>
-      </td>
-      <td className="px-8 py-6 text-center font-bold text-slate-400 text-xs tracking-tighter">{npm}</td>
-      <td className="px-8 py-6 text-center">
-        <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border shadow-sm ${statusColor}`}>
-          {status}
-        </span>
-      </td>
-      <td className="px-8 py-6">
-        <p className="text-xs font-black text-slate-600 uppercase tracking-tight">{lecturer2}</p>
-      </td>
-      <td className="px-8 py-6 text-center">
-        <button className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-slate-200 active:scale-95">
-          DETAIL
-        </button>
-      </td>
-    </tr>
   );
 }

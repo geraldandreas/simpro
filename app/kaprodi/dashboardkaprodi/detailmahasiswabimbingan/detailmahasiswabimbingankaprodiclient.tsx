@@ -8,7 +8,7 @@ import { supabase } from "@/lib/supabaseClient";
 // Sidebar dihapus
 import Link from "next/link"; 
 import { 
-  ArrowLeft, User, Calendar, MapPin, MessageSquare, ExternalLink, Edit, X 
+  ArrowLeft, User, Calendar, MapPin, MessageSquare, ExternalLink, Edit, X, Search
 } from "lucide-react";
 
 // --- TYPES ---
@@ -212,9 +212,32 @@ if (!user) throw new Error("User belum login");
     }
   };
 
-  if (loading) return <div className="flex h-screen items-center justify-center text-gray-400">Memuat data...</div>;
-  if (!student) return <div className="flex h-screen items-center justify-center text-gray-400">Data tidak ditemukan.</div>;
+ if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-[#F8F9FB] z-50">
+        {/* Animasi Spinner Simple & Elegan */}
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
 
+  if (!student) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center bg-[#F8F9FB]">
+        <div className="w-24 h-24 bg-slate-100 border-2 border-dashed border-slate-200 rounded-[2rem] flex items-center justify-center text-slate-300 mb-6 shadow-inner relative overflow-hidden">
+          <Search size={32} className="relative z-10" />
+          <div className="absolute w-full h-full bg-gradient-to-tr from-transparent to-slate-50 opacity-50"></div>
+        </div>
+        <h2 className="text-lg font-black text-slate-700 uppercase tracking-widest mb-2">Data Tidak Ditemukan</h2>
+        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest text-center max-w-xs">
+          Mahasiswa yang Anda cari tidak ada di sistem atau Anda tidak memiliki akses.
+        </p>
+        <button onClick={() => window.history.back()} className="mt-8 px-6 py-3 bg-white text-slate-600 text-[10px] font-black uppercase tracking-widest rounded-xl border border-slate-200 hover:bg-slate-50 transition-all shadow-sm active:scale-95">
+          Kembali
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-[#F8F9FB] font-sans text-slate-700">

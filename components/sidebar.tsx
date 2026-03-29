@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image"; // 🔥 Import Image dari Next.js
-import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import Image from "next/image"; 
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect } from "react";
+import useSWR, { mutate } from "swr"; // 🔥 IMPORT SWR
 import { supabase } from "@/lib/supabaseClient";
 import {
   LayoutDashboard,
@@ -14,14 +15,39 @@ import {
   Edit3,
   Settings,
   LogOut,
+  FileCheck 
 } from "lucide-react";
+
+// ================= FETCHER SWR =================
+const fetchProfile = async () => {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not logged in");
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("nama, role, avatar_url")
+    .eq("id", user.id)
+    .single();
+
+  return {
+    nama: profile?.nama || user.user_metadata?.full_name || user.email || "User",
+    role: profile?.role || "Mahasiswa",
+    avatar_url: profile?.avatar_url || null,
+  };
+};
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
 
-  const [displayName, setDisplayName] = useState("Loading...");
-  const [role, setRole] = useState("Mahasiswa");
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null); // 🔥 State untuk avatar
+  // 🔥 IMPLEMENTASI SWR UNTUK CACHING (ANTI KEDIP) 🔥
+  const { data } = useSWR('sidebar_user_profile', fetchProfile, {
+    revalidateOnFocus: false, // Tidak perlu sering refresh karena data profil jarang berubah
+  });
+
+  const displayName = data?.nama || "Loading...";
+  const role = data?.role || "Mahasiswa";
+  const avatarUrl = data?.avatar_url || null;
 
   const menuItems = [
     { icon: LayoutDashboard, label: "Dashboard", href: "/mahasiswa/dashboard" },
@@ -30,64 +56,19 @@ export default function Sidebar() {
     { icon: FileText, label: "Unggah Dokumen Seminar", href: "/mahasiswa/uploaddokumen" },
     { icon: Calendar, label: "Jadwal Seminar & Sidang", href: "/mahasiswa/jadwal" },
     { icon: Edit3, label: "Perbaikan Pasca Seminar", href: "/mahasiswa/perbaikan" },
+    { icon: FileCheck, label: "Dokumen Sidang", href: "/mahasiswa/dokumensidang" }, 
   ];
 
-  // ---------------- LOAD USER NAME ----------------
+  // ---------------- AUTO REFRESH JIKA PROFIL DIUBAH DI SETTINGS ----------------
   useEffect(() => {
-    const loadUser = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) return;
-
-      // 1️⃣ Ambil dari table profiles (🔥 Tambahkan avatar_url)
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("nama, role, avatar_url")
-        .eq("id", user.id)
-        .single();
-
-      if (profile?.nama) {
-        setDisplayName(profile.nama);
-      } else if (user.user_metadata?.full_name) {
-        // 2️⃣ Fallback dari Google
-        setDisplayName(user.user_metadata.full_name);
-      } else {
-        // 3️⃣ Fallback terakhir: email
-        setDisplayName(user.email ?? "User");
-      }
-
-      if (profile?.role) {
-        setRole(profile.role);
-      }
-
-      // 🔥 Set Avatar URL jika ada
-      if (profile?.avatar_url) {
-        setAvatarUrl(profile.avatar_url);
-      }
-    };
-
-    loadUser();
-
-    // 🔄 Auto refresh kalau profile berubah (termasuk avatar)
     const channel = supabase
       .channel("profile-changes")
       .on(
         "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "profiles",
-        },
-        (payload) => {
-          const updated = payload.new as any;
-          if (updated?.nama) {
-            setDisplayName(updated.nama);
-          }
-          if (updated?.avatar_url !== undefined) { // 🔥 Deteksi perubahan avatar
-            setAvatarUrl(updated.avatar_url);
-          }
+        { event: "UPDATE", schema: "public", table: "profiles" },
+        () => {
+          // Refresh SWR Cache secara instan jika ada perubahan di database
+          mutate('sidebar_user_profile'); 
         }
       )
       .subscribe();
@@ -97,81 +78,121 @@ export default function Sidebar() {
     };
   }, []);
 
+  // ================= LOGOUT FUNCTION =================
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.push("/login");
+  };
+
   return (
-    <aside className="w-64 bg-white border-r border-gray-200 flex flex-col fixed h-full z-30">
-      <div className="p-6 flex items-center gap-3 border-b border-gray-50">
-        {/* 🔥 Ganti kotak inisial dengan logika Avatar/Inisial */}
-        <div className="w-10 h-10 bg-blue-800 rounded-full flex items-center justify-center text-white font-bold text-lg relative overflow-hidden shrink-0">
-          {avatarUrl ? (
-            <Image 
-              src={avatarUrl} 
-              alt="Profile" 
-              layout="fill" 
-              objectFit="cover" 
-            />
-          ) : (
-            displayName.charAt(0).toUpperCase()
-          )}
+    <aside className="w-64 bg-[#F3F5F9] border-r border-gray-200 flex flex-col fixed h-full z-30">
+      
+      {/* ================= USER PROFILE ================= */}
+      <div className="p-6 pb-2">
+        <div className="flex items-center gap-3 mb-8">
+          <div className="w-10 h-10 rounded-full bg-[#2B5F9E] flex items-center justify-center text-white font-bold text-lg relative overflow-hidden shrink-0 shadow-inner">
+            {avatarUrl ? (
+              <Image 
+                src={avatarUrl} 
+                alt="Profile" 
+                layout="fill" 
+                objectFit="cover" 
+              />
+            ) : (
+              displayName.charAt(0).toUpperCase()
+            )}
+          </div>
+          <div className="min-w-0">
+            <h3 className="text-sm font-bold text-gray-900 truncate">
+              {displayName}
+            </h3>
+            <p className="text-xs text-blue-600 font-medium capitalize">
+              {role}
+            </p>
+          </div>
         </div>
-        <div className="min-w-0"> {/* 🔥 Tambahkan min-w-0 agar nama yang panjang terpotong rapi */}
-          <p className="text-sm font-bold text-blue-900 leading-none truncate">
-            {displayName}
+      </div>
+
+      {/* ================= MENU ================= */}
+      <div className="flex-1 px-4 py-2 overflow-y-auto custom-scrollbar">
+        <div className="mb-6">
+          <p className="px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+            Menu
           </p>
-          <p className="text-xs text-blue-400 mt-1 capitalize">{role}</p>
+
+          <nav className="space-y-1">
+            {menuItems.map((item) => {
+              const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+              return (
+                <Link key={item.href} href={item.href}>
+                  <div
+                    className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                      isActive
+                        ? "bg-blue-100 text-blue-700"
+                        : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                    }`}
+                  >
+                    <item.icon size={20} />
+                    <span>{item.label}</span>
+                  </div>
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
+
+        <div>
+          <p className="px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+            Others
+          </p>
+
+          <nav className="space-y-1">
+            <Link href="/settings">
+              <div
+                className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                  pathname === "/settings"
+                    ? "bg-blue-100 text-blue-700"
+                    : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                }`}
+              >
+                <Settings size={20} />
+                <span>Settings</span>
+              </div>
+            </Link>
+          </nav>
         </div>
       </div>
 
-      <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto custom-scrollbar">
-        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-2 mb-2">
-          MENU
-        </p>
+      {/* ================= LOGOUT (GAYA DOSEN) ================= */}
+      <div className="p-6 mt-auto bg-[#F3F5F9]">
+        <button
+          onClick={handleLogout}
+          className="
+            w-full flex items-center gap-3 px-4 py-3
+            rounded-xl text-gray-500 font-medium
+            hover:bg-red-50 hover:text-red-600
+            transition-all group
+          "
+        >
+          <div
+            className="
+              w-9 h-9 flex items-center justify-center
+              rounded-lg border border-gray-200
+              text-gray-400
+              group-hover:border-red-200
+              group-hover:text-red-600
+              transition-all
+            "
+          >
+            <LogOut size={18} className="rotate-180" />
+          </div>
 
-        {menuItems.map((item) => (
-          <Link key={item.href} href={item.href}>
-            <div
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition ${
-                pathname === item.href
-                  ? "bg-blue-50 text-blue-700 font-semibold"
-                  : "text-gray-400 hover:bg-gray-50"
-              }`}
-            >
-              <item.icon size={18} />
-              <span>{item.label}</span>
-            </div>
-          </Link>
-        ))}
+          <span className="text-sm">Log out</span>
+        </button>
 
-        <div className="pt-8">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-2 mb-2">
-            OTHERS
-          </p>
-          <Link href="/settings">
-            <div
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition ${
-                pathname === "/settings"
-                  ? "bg-blue-50 text-blue-700 font-semibold"
-                  : "text-gray-400 hover:bg-gray-50"
-              }`}
-            >
-              <Settings size={18} />
-              <span>Settings</span>
-            </div>
-          </Link>
-        </div>
-      </nav>
-
-      {/* FOOTER */}
-      <div className="p-6 border-t border-gray-100 flex items-center justify-between bg-white">
-        <div className="flex items-center gap-3">
-          <Link href="/login" title="Logout">
-            <LogOut
-              size={22}
-              className="text-gray-300 cursor-pointer hover:text-red-500 transition-colors rotate-180"
-            />
-          </Link>
-          <span className="text-gray-400 text-xs font-medium">V.1.0.0</span>
-        </div>
+        <p className="text-xs text-gray-400 mt-3 ml-12">V.1.0.0</p>
       </div>
+
     </aside>
   );
 }

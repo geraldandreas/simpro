@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { 
-  ChevronLeft, 
+  ArrowLeft, 
   User, 
   XCircle, 
   BadgeCheck,
@@ -131,12 +131,17 @@ export default function DetailManajemenBursa() {
       <div className="max-w-7xl mx-auto">
         
         <button 
-          onClick={() => router.back()}
-          className="group flex items-center gap-2 text-slate-400 hover:text-blue-600 font-black text-[10px] uppercase tracking-[0.2em] mb-8 transition-all"
-        >
-          <ChevronLeft size={16} className="group-hover:-translate-x-1 transition-transform" /> 
-          Kembali ke Monitoring
-        </button>
+  onClick={() => router.back()}
+  className="group flex items-center gap-4 text-slate-400 hover:text-blue-600 font-black text-[10px] uppercase tracking-[0.2em] mb-8 transition-all"
+>
+  {/* Kotak Putih Arrow */}
+  <div className="w-12 h-12 bg-white border border-slate-200 rounded-2xl flex items-center justify-center text-slate-500 group-hover:text-blue-600 group-hover:border-blue-200 group-hover:shadow-md transition-all shadow-sm">
+    <ArrowLeft size={24} className="group-hover:-translate-x-1 transition-transform" />
+  </div>
+  
+  {/* Teks Label */}
+  Kembali ke Monitoring
+</button>
 
         {/* PROFIL DOSEN HEADER */}
         <div className="bg-white rounded-[3rem] p-10 shadow-2xl shadow-slate-200/50 border border-white mb-12 flex flex-col md:flex-row md:items-center justify-between gap-6">

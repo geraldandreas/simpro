@@ -1,23 +1,30 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import Image from "next/image"; // 🔥 Import Image dari Next.js
+import Image from "next/image"; 
 import {
   LayoutDashboard,
   Users,
   FileText,
   Settings,
-  HelpCircle,
   LogOut,
+  CalendarCheck,
+  FileCheck,
+  GraduationCap,
+  ClipboardList // 🔥 Import icon baru untuk Seminar Bimbingan
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
+// 🔥 TAMBAHKAN MENU "Seminar Bimbingan" DI BAWAH JADWAL PENGUJI
 const MENU_ITEMS = [
   { label: "Dashboard", icon: LayoutDashboard, href: "/dosen/dashboarddosen" },
   { label: "Mahasiswa Bimbingan", icon: Users, href: "/dosen/mahasiswabimbingan" },
   { label: "Akses Proposal", icon: FileText, href: "/dosen/aksesproposal" },
+  { label: "Jadwal Penguji Seminar", icon: CalendarCheck, href: "/dosen/jadwalpengujiseminar" },
+  { label: "Perbaikan Seminar", icon: FileCheck, href: "/dosen/perbaikanseminar" }, 
+  { label: "Jadwal Penguji Sidang", icon: GraduationCap, href: "/dosen/jadwalmengujisidang" },
 ];
 
 const OTHER_ITEMS = [
@@ -30,7 +37,7 @@ export default function SidebarDosen() {
 
   const [nama, setNama] = useState("Loading...");
   const [role, setRole] = useState("Dosen");
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null); // 🔥 State untuk avatar
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null); 
 
   // ================= FETCH PROFILE =================
   useEffect(() => {
@@ -40,17 +47,35 @@ export default function SidebarDosen() {
 
       const { data } = await supabase
         .from("profiles")
-        .select("nama, avatar_url") // 🔥 Tambahkan avatar_url
+        .select("nama, avatar_url") 
         .eq("id", user.id)
         .single();
 
       if (data) {
         if (data.nama) setNama(data.nama);
-        if (data.avatar_url) setAvatarUrl(data.avatar_url); // 🔥 Set state avatar
+        if (data.avatar_url) setAvatarUrl(data.avatar_url); 
       }
     };
 
     fetchProfile();
+
+    // Auto update jika ganti profil di settings
+    const channel = supabase
+      .channel("profile-changes-dosen")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "profiles" },
+        (payload) => {
+          const updated = payload.new as any;
+          if (updated?.nama) setNama(updated.nama);
+          if (updated?.avatar_url !== undefined) setAvatarUrl(updated.avatar_url);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   // ================= LOGOUT =================
@@ -61,7 +86,7 @@ export default function SidebarDosen() {
 
   // ================= ACTIVE MENU =================
   const getItemClass = (path: string) => {
-    const isActive = pathname === path;
+    const isActive = pathname === path || pathname.startsWith(`${path}/`); 
     return `
       flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors
       ${
@@ -73,13 +98,12 @@ export default function SidebarDosen() {
   };
 
   return (
-    <aside className="w-64 bg-[#F3F5F9] border-r border-gray-200 h-screen flex flex-col sticky top-0 overflow-y-auto">
+    <aside className="w-64 bg-[#F3F5F9] border-r border-gray-200 h-screen flex flex-col sticky top-0 z-30">
       
       {/* ================= USER PROFILE ================= */}
       <div className="p-6 pb-2">
         <div className="flex items-center gap-3 mb-8">
-          {/* 🔥 Modifikasi wadah inisial agar bisa menampung gambar */}
-          <div className="w-10 h-10 rounded-full bg-[#2B5F9E] flex items-center justify-center text-white font-bold text-lg relative overflow-hidden shrink-0">
+          <div className="w-10 h-10 rounded-full bg-[#2B5F9E] flex items-center justify-center text-white font-bold text-lg relative overflow-hidden shrink-0 shadow-inner">
             {avatarUrl ? (
               <Image 
                 src={avatarUrl} 
@@ -103,7 +127,7 @@ export default function SidebarDosen() {
       </div>
 
       {/* ================= MENU ================= */}
-      <div className="px-4 flex-1">
+      <div className="flex-1 px-4 py-2 overflow-y-auto custom-scrollbar">
         <div className="mb-6">
           <p className="px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
             Menu
@@ -144,7 +168,7 @@ export default function SidebarDosen() {
       </div>
 
       {/* ================= LOGOUT ================= */}
-      <div className="p-6 mt-auto">
+      <div className="p-6 mt-auto bg-[#F3F5F9]">
         <button
           onClick={handleLogout}
           className="

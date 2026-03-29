@@ -17,8 +17,8 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 
 interface StudentRow {
-  id: string; // seminar_request_id
-  revision_id: string; 
+  sidang_request_id: string; // ID Utama dari sidang_requests
+  seminar_request_id: string; 
   nama: string;
   npm: string;
   avatar_url?: string | null;
@@ -37,52 +37,44 @@ export default function PengajuanSidangKaprodiClient() {
       try {
         /**
          * PERBAIKAN QUERY:
-         * 1. Kita query dari 'seminar_revisions'
-         * 2. Memanggil relasi 'seminar_requests' (pastikan nama ini sesuai di Database > Relationships)
-         * 3. Mengambil data berjenjang hingga ke profile user
+         * Sekarang Kaprodi membaca langsung dari "sidang_requests" (karena data di-insert ke sana)
          */
         const { data, error } = await supabase
-          .from("seminar_revisions")
+          .from("sidang_requests")
           .select(`
             id,
-            original_name,
-            seminar_requests (
-              id,
-              status,
-              proposal:proposals (
-                judul,
-                bidang,
-                user:profiles (
-                  nama,
-                  npm
-                )
+            seminar_request_id,
+            status,
+            proposal:proposals (
+              judul,
+              bidang,
+              user:profiles (
+                nama,
+                npm,
+                avatar_url
               )
             )
           `)
+          .in('status', ['menunggu_penjadwalan']) // Ambil yang baru diajukan mahasiswa
           .order("created_at", { ascending: false });
 
         if (error) throw error;
 
-        /**
-         * MAPPING DATA:
-         * Memastikan pengecekan chaining optional (?.) agar tidak crash jika ada data null
-         */
         const mapped: StudentRow[] = (data || [])
-          .filter((item: any) => item.seminar_requests?.proposal?.user) 
+          .filter((item: any) => item.proposal?.user) 
           .map((item: any) => {
-            const semReq = item.seminar_requests;
-            const prop = semReq.proposal;
+            const prop = item.proposal;
             const profile = prop.user;
 
             return {
-              id: semReq.id,
-              revision_id: item.id,
+              sidang_request_id: item.id,
+              seminar_request_id: item.seminar_request_id,
               nama: profile.nama,
               npm: profile.npm,
               avatar_url: profile.avatar_url || null,
               judul: prop.judul,
               bidang: prop.bidang,
-              file_name: item.original_name
+              file_name: "Dokumen Sidang Lengkap (Tervalidasi Tendik)" // File sekarang ada di dashboard Tendik
             };
           });
         
@@ -101,31 +93,22 @@ export default function PengajuanSidangKaprodiClient() {
     <div className="min-h-screen bg-[#F4F7FE] font-sans text-slate-700">
       {/* HEADER */}
       <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
-                                <div className="flex items-center gap-6">
-                                  <div className="relative w-72 group">
-                                  </div>
-                                </div>
-                      
-                              <div className="flex items-center gap-6">
-                          {/* KOMPONEN LONCENG BARU */}
-                          <NotificationBell />
-                          
-                          <div className="h-8 w-[1px] bg-slate-200 mx-2" />
-                      
-                                <div className="flex items-center gap-6">
-                                  {/* Minimalist SIMPRO Text */}
-                                  <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
-                                    Simpro
-                                  </span>
-                                </div>
-                                </div>
-                              </header>
+         <div className="flex items-center gap-6"></div>
+         <div className="flex items-center gap-6">
+            <NotificationBell />
+            <div className="h-8 w-[1px] bg-slate-200 mx-2" />
+            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
+               Simpro
+            </span>
+         </div>
+      </header>
+      
       {/* MAIN CONTENT */}
       <main className="p-10 max-w-[1400px] mx-auto w-full">
         <div className="mb-10 flex items-end justify-between">
           <div>
             <h1 className="text-3xl font-black text-slate-800 tracking-tight uppercase leading-none">Penjadwalan Sidang Akhir</h1>
-            <p className="text-slate-500 font-medium mt-3">Daftar mahasiswa yang sudah mengunggah revisi seminar dan siap dijadwalkan sidang akhir.</p>
+            <p className="text-slate-500 font-medium mt-3">Daftar mahasiswa yang sudah divalidasi berkasnya oleh Tendik dan siap dijadwalkan.</p>
           </div>
           <div className="hidden lg:flex items-center gap-2 px-5 py-2.5 bg-blue-50 text-blue-700 rounded-2xl border border-blue-100 text-xs font-black uppercase tracking-widest shadow-sm">
             <CalendarCheck size={16} /> {students.length} Antrean Sidang
@@ -144,7 +127,7 @@ export default function PengajuanSidangKaprodiClient() {
                 <tr className="bg-slate-50/50 text-[11px] uppercase tracking-[0.15em] text-slate-400 font-black border-b border-slate-100">
                   <th className="px-8 py-6 w-[22%]">Mahasiswa</th>
                   <th className="px-8 py-6 w-[15%] text-center">NPM</th>
-                  <th className="px-8 py-6 w-[35%]">Judul & Berkas Perbaikan</th>
+                  <th className="px-8 py-6 w-[35%]">Judul & Status Berkas</th>
                   <th className="px-8 py-6 w-[13%] text-center">Bidang</th>
                   <th className="px-8 py-6 w-[15%] text-center">Tindakan</th>
                 </tr>
@@ -164,10 +147,9 @@ export default function PengajuanSidangKaprodiClient() {
                   </tr>
                 ) : (
                   students.map((item) => (
-                    <tr key={item.revision_id} className="group hover:bg-blue-50/30 transition-all duration-300">
+                    <tr key={item.sidang_request_id} className="group hover:bg-blue-50/30 transition-all duration-300">
                       <td className="px-8 py-8">
                         <div className="flex items-center gap-4">
-                         {/* 🔥 LOGIKA RENDER FOTO / INISIAL */}
                           <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-black group-hover:bg-blue-600 group-hover:text-white transition-all uppercase shadow-inner tracking-tighter relative overflow-hidden shrink-0 border border-slate-200">
                             {item.avatar_url ? (
                               <Image 
@@ -197,7 +179,8 @@ export default function PengajuanSidangKaprodiClient() {
                         <span className="inline-block px-3 py-1 bg-slate-100 text-slate-500 text-[10px] font-black uppercase tracking-wider rounded-lg border border-slate-200 tracking-tighter">{item.bidang}</span>
                       </td>
                       <td className="px-8 py-8 text-center">
-                        <Link href={`/kaprodi/dashboardkaprodi/penjadwalansidang?id=${item.id}&rev=${item.revision_id}`}>
+                        {/* URL DIUBAH AGAR MENGIRIM SIDANG_ID BUKAN LAGI REV_ID */}
+                        <Link href={`/kaprodi/dashboardkaprodi/penjadwalansidang?id=${item.seminar_request_id}&sidang_id=${item.sidang_request_id}`}>
                           <button className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-lg active:scale-95 group/btn">
                             PROSES SIDANG <ArrowRight size={14} className="group-hover/btn:translate-x-1 transition-transform" />
                           </button>

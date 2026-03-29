@@ -20,6 +20,7 @@ interface StudentData {
   npm: string;
   status: string;
   pembimbing2: string;
+  avatar_url: string | null;
 }
 
 export default function DashboardDosenPage() {
@@ -91,7 +92,7 @@ export default function DashboardDosenPage() {
             status,
             proposal:proposals (
               id, judul, status,
-              user:profiles ( nama, npm ),
+              user:profiles ( nama, npm, avatar_url ),
               seminar:seminar_requests ( status, approved_by_p1, approved_by_p2, created_at ),
               sidang:sidang_requests ( id ),
               docs:seminar_documents ( status ),
@@ -164,7 +165,8 @@ export default function DashboardDosenPage() {
             name: p.user?.nama || "Tanpa Nama",
             npm: p.user?.npm || "-",
             status: ui.label,
-            pembimbing2: partner?.profiles?.nama || "-" 
+            pembimbing2: partner?.profiles?.nama || "-",
+            avatar_url: p.user?.avatar_url || null
           };
         });
 
@@ -309,12 +311,16 @@ export default function DashboardDosenPage() {
                         <tr key={idx} className="group hover:bg-blue-50/30 transition-all duration-300">
                           <td className="px-8 py-8">
                             <div className="flex items-center gap-4">
-                              <div className="h-12 w-12 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-black group-hover:bg-blue-600 group-hover:text-white transition-all shadow-inner uppercase">
-                                {student.name.charAt(0)}
+                              {/* 🔥 MERENDER FOTO PROFIL MAHASISWA JIKA ADA */}
+                              <div className="h-12 w-12 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-black group-hover:bg-blue-600 group-hover:text-white transition-all shadow-inner uppercase overflow-hidden shrink-0">
+                                {student.avatar_url ? (
+                                  <img src={student.avatar_url} alt={student.name} className="w-full h-full object-cover" />
+                                ) : (
+                                  student.name.charAt(0)
+                                )}
                               </div>
                               <div className="min-w-0">
                                 <p className="text-sm font-black text-slate-800 truncate uppercase tracking-tight">{student.name}</p>
-                                <p className="text-[10px] text-blue-500 font-bold uppercase tracking-widest mt-1 italic">Mahasiswa Akhir</p>
                               </div>
                             </div>
                           </td>
@@ -347,7 +353,6 @@ export default function DashboardDosenPage() {
               </div>
               
               <div className="p-8 bg-slate-50/50 border-t border-slate-100 flex justify-center">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Sistem Informasi Manajemen Tugas Akhir v.1.0</p>
               </div>
             </div>
           </div>

@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import useSWR from "swr"; 
 import { useSearchParams, useRouter } from "next/navigation";
 import { sendNotification } from "@/lib/notificationUtils";
 import { supabase } from "@/lib/supabaseClient";
 import Sidebar from "@/components/sidebar";
 import { 
-  Search, 
   AlertCircle, 
   User, 
   FileText, 
@@ -22,172 +22,155 @@ import {
   ExternalLink
 } from "lucide-react";
 
+// ================= FETCHER SWR =================
+const fetcher = async (sessionId: string) => {
+  const { data: sessionData, error: sessionError } = await supabase
+    .from("guidance_sessions")
+    .select(`
+      id, sesi_ke, tanggal, jam, keterangan, metode, status, dosen_id,
+      proposal:proposals ( id, judul, user:profiles ( nama, npm ) )
+    `)
+    .eq("id", sessionId)
+    .single();
+
+  if (sessionError || !sessionData) throw new Error("Gagal load session");
+
+  const proposalId = (sessionData.proposal as any).id;
+  
+  const { data: supervisors } = await supabase
+    .from("thesis_supervisors")
+    .select(`role, dosen_id, dosen:profiles ( nama )`)
+    .eq("proposal_id", proposalId);
+
+  const { data: sessionDrafts } = await supabase
+    .from("session_drafts")
+    .select(`id, file_url, uploaded_at, mahasiswa_id, catatan`)
+    .eq("session_id", sessionId)
+    .order("uploaded_at", { ascending: false });
+
+  const { data: feedbackData, error: feedbackError } = await supabase
+    .from("session_feedbacks")
+    .select(`id, komentar, file_url, status_revisi, created_at, dosen:profiles ( nama )`)
+    .eq("session_id", sessionId)
+    .order("created_at", { ascending: false });
+
+  if (feedbackError) throw feedbackError;
+
+  return {
+    ...sessionData,
+    proposal: { 
+        ...(sessionData.proposal as any), 
+        supervisors: supervisors || [] 
+    },
+    drafts: sessionDrafts || [],
+    feedbacks: feedbackData || []
+  };
+};
+
 export default function DetailBimbinganMahasiswaClient() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const sessionId = searchParams.get("id");
 
-  const [data, setData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  
+  // 🔥 IMPLEMENTASI SWR 🔥
+  const { data, error, isLoading, mutate } = useSWR(
+    sessionId ? `detail_bimbingan_${sessionId}` : null, 
+    () => fetcher(sessionId as string),
+    {
+      revalidateOnFocus: true,
+      refreshInterval: 60000, 
+    }
+  );
+
   const [file, setFile] = useState<File | null>(null);
-  const [catatanInput, setCatatanInput] = useState("");
+  const [localCatatan, setLocalCatatan] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
-  const [feedbacks, setFeedbacks] = useState<any[]>([]);
+
+  // --- HANDLERS ---
   const handleDownloadDraft = async (fileUrl: string) => {
-  try {
-    const path = fileUrl.split("draftsession/")[1];
+    try {
+      const path = fileUrl.split("draftsession/")[1];
+      if (!path) throw new Error("Path invalid");
 
-    if (!path) throw new Error("Path invalid");
+      const { data, error } = await supabase.storage
+        .from("draftsession")
+        .createSignedUrl(path, 3600);
 
-    const { data, error } = await supabase.storage
-      .from("draftsession")
-      .createSignedUrl(path, 3600);
+      if (error) throw error;
+      window.open(data.signedUrl, "_blank");
+    } catch (err) {
+      console.error(err);
+      alert("Gagal membuka draft");
+    }
+  };
 
-    if (error) throw error;
+  const handleDownloadFeedback = async (fileUrl: string) => {
+    try {
+      const path = fileUrl.split("feedback_draft/")[1];
+      if (!path) throw new Error("Path file tidak valid");
 
-    window.open(data.signedUrl, "_blank");
-  } catch (err) {
-    console.error(err);
-    alert("Gagal membuka draft");
-  }
-};
+      const { data, error } = await supabase.storage
+        .from("feedback_draft")
+        .createSignedUrl(path, 3600);
 
-
-  useEffect(() => {
-    if (!sessionId) return;
-
-    
-
-    const fetchDetail = async () => {
-      try {
-        setLoading(true);
-        const { data: sessionData, error: sessionError } = await supabase
-          .from("guidance_sessions")
-          .select(`
-            id, sesi_ke, tanggal, jam, keterangan, metode, status, dosen_id,
-            proposal:proposals ( id, judul, user:profiles ( nama, npm ) )
-          `)
-          .eq("id", sessionId)
-          .single();
-
-        if (sessionError) throw sessionError;
-        {/* @ts-ignore */}
-        const proposalId = sessionData.proposal.id;
-        const { data: supervisors } = await supabase
-          .from("thesis_supervisors")
-          .select(`role, dosen_id, dosen:profiles ( nama )`)
-          
-          
-          .eq("proposal_id", proposalId);
-
-
-        const { data: sessionDrafts } = await supabase
-          .from("session_drafts")
-          .select(`id, file_url, uploaded_at, mahasiswa_id, catatan`)
-          .eq("session_id", sessionId)
-          .order("uploaded_at", { ascending: false });
-
-        const { data: feedbackData, error: feedbackError } = await supabase
-          .from("session_feedbacks")
-          .select(`id, komentar, file_url, status_revisi, created_at, dosen:profiles ( nama )`)
-          .eq("session_id", sessionId)
-          .order("created_at", { ascending: false });
-          console.log("fileURL", feedbackData?.[0]?.file_url)
-
-        if (feedbackError) throw feedbackError;
-        setFeedbacks(feedbackData || []);
-
-        setData({
-          ...sessionData,
-          proposal: { ...sessionData.proposal, supervisors: supervisors || [] },
-          drafts: sessionDrafts || [],
-        });
-        
-        setCatatanInput(sessionDrafts?.[0]?.catatan || "");
-      } catch (err) {
-        console.error("❌ Fetch error:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchDetail();
-  }, [sessionId]);
-
-  const isLocked = data?.drafts[0]?.file_url !== undefined;
+      if (error) throw error;
+      window.open(data.signedUrl, "_blank");
+    } catch (err) {
+      console.error(err);
+      alert("Gagal mengunduh file");
+    }
+  };
 
   const handleKirimKePembimbing = async () => {
-  const confirmKirim = window.confirm("Kirim data ke pembimbing? Data tidak dapat diubah setelah dikirim.");
-  if (!confirmKirim) return;
+    const confirmKirim = window.confirm("Kirim data ke pembimbing? Data tidak dapat diubah setelah dikirim.");
+    if (!confirmKirim) return;
 
-  setSending(true);
-  try {
-    const { data: { session: authSession } } = await supabase.auth.getSession();
-    const userId = authSession?.user.id;
-    if (!userId) throw new Error("User tidak terautentikasi.");
+    setSending(true);
+    try {
+      const { data: { session: authSession } } = await supabase.auth.getSession();
+      const userId = authSession?.user.id;
+      if (!userId) throw new Error("User tidak terautentikasi.");
 
-    if (file) {
-      const filePath = `drafts/${sessionId}/${Date.now()}-${file.name}`;
-      const { error: uploadError } = await supabase.storage.from("draftsession").upload(filePath, file);
-      if (uploadError) throw uploadError;
+      if (file) {
+        const filePath = `drafts/${sessionId}/${Date.now()}-${file.name}`;
+        const { error: uploadError } = await supabase.storage.from("draftsession").upload(filePath, file);
+        if (uploadError) throw uploadError;
 
-      const { data: urlData } = supabase.storage.from("draftsession").getPublicUrl(filePath);
-      const { error: insertError } = await supabase.from("session_drafts").insert({
-        session_id: sessionId, 
-        mahasiswa_id: userId, 
-        file_url: urlData.publicUrl, 
-        catatan: catatanInput,
-      });
-      if (insertError) throw insertError;
+        const { data: urlData } = supabase.storage.from("draftsession").getPublicUrl(filePath);
+        const { error: insertError } = await supabase.from("session_drafts").insert({
+          session_id: sessionId, 
+          mahasiswa_id: userId, 
+          file_url: urlData.publicUrl, 
+          catatan: catatanAktif, // Menggunakan state catatan tersinkronisasi
+        });
+        if (insertError) throw insertError;
+      }
+
+      const targetDosenId = data?.dosen_id; 
+
+      if (targetDosenId) {
+        await sendNotification(
+          targetDosenId, 
+          "Draft Bimbingan Baru",
+          `${data?.proposal?.user?.nama} telah mengunggah draft untuk Sesi Bimbingan ${data?.sesi_ke}.`
+        );
+      }
+
+      alert("✅ Draft berhasil dikirim ke dosen terkait!");
+      setFile(null); 
+      mutate(); // Refresh SWR UI
+    } catch (err: any) {
+      console.error(err);
+      alert("Gagal mengirim: " + err.message);
+    } finally {
+      setSending(false);
     }
+  };
 
-    // 🔥 PERBAIKAN: Jangan pakai loop supervisors.map()
-    // Langsung ambil dosen_id dari data sesi bimbingan yang sedang aktif
-    const targetDosenId = data?.dosen_id; 
+  // --- EARLY RETURNS ---
+  if (!sessionId) return <div className="flex h-screen items-center justify-center text-gray-400">Sesi tidak ditemukan.</div>;
 
-    if (targetDosenId) {
-      await sendNotification(
-        targetDosenId, // Hanya kirim ke dosen yang punya jadwal ini
-        "Draft Bimbingan Baru",
-        `${data.proposal.user.nama} telah mengunggah draft untuk Sesi Bimbingan ${data.sesi_ke}.`
-      );
-    }
-
-    alert("✅ Draft berhasil dikirim ke dosen terkait!");
-    window.location.reload();
-  } catch (err: any) {
-    console.error(err);
-    alert("Gagal mengirim: " + err.message);
-  } finally {
-    setSending(false);
-  }
-};
-  const handleDownloadFeedback = async (fileUrl: string) => {
-  try {
-   
-    // ambil path SETELAH nama bucket
-    const path = fileUrl.split("feedback_draft/")[1];
-  
-
-    if (!path) throw new Error("Path file tidak valid");
-
-    const { data, error } = await supabase.storage
-      .from("feedback_draft")
-      .createSignedUrl(path, 3600);
-    console.log("data",data)
-    if (error) throw error;
-
-    window.open(data.signedUrl, "_blank");
-    console.log("datasigned",data.signedUrl)
-  } catch (err) {
-    console.error(err);
-    alert("Gagal mengunduh file");
-  }
-};
-
-
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex min-h-screen bg-[#F8F9FB]">
         <Sidebar />
@@ -198,12 +181,18 @@ export default function DetailBimbinganMahasiswaClient() {
     );
   }
 
-  const supervisors = data?.proposal?.supervisors || [];
+  if (error || !data) return <div className="p-20 text-center font-black text-red-500 uppercase tracking-widest">Gagal memuat data.</div>;
+
+  // --- DERIVED VARIABLES ---
+  const supervisors = data.proposal?.supervisors || [];
   const pembimbing1 = supervisors.find((s: any) => s.role === "utama")?.dosen?.nama || "-";
   const pembimbing2 = supervisors.find((s: any) => s.role === "pendamping")?.dosen?.nama || "-";
-  if (!sessionId) return <div className="flex h-screen items-center justify-center text-gray-400">Sesi tidak ditemukan.</div>;
-   const feedbackWithFile =
-  feedbacks.find(fb => !!fb.file_url) ?? null;
+  
+  const feedbacks = data.feedbacks || [];
+  const feedbackWithFile = feedbacks.find((fb: any) => !!fb.file_url) ?? null;
+
+  const catatanAktif = localCatatan !== null ? localCatatan : (data.drafts?.[0]?.catatan || "");
+  const isLocked = data.drafts && data.drafts.length > 0 && data.drafts[0].file_url !== undefined;
 
   return (
     <div className="flex min-h-screen bg-[#F4F7FE] font-sans text-slate-700">
@@ -211,58 +200,47 @@ export default function DetailBimbinganMahasiswaClient() {
 
       <main className="flex-1 ml-64 flex flex-col h-screen overflow-y-auto">
         <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
+          <div className="flex items-center gap-6"><div className="relative w-72 group"></div></div>
           <div className="flex items-center gap-6">
-            <div className="relative w-72 group">
-            </div>
-          </div>
-
-          <div className="flex items-center gap-6">
-            {/* Minimalist SIMPRO Text */}
-            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
-              Simpro
-            </span>
+            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">Simpro</span>
           </div>
         </header>
 
         <div className="flex-1 p-10 pb-24 max-w-7xl mx-auto w-full">
-          {/* Top Navigation */}
           <div className="flex items-center justify-between mb-8">
             <div className="flex items-center gap-4">
               <button onClick={() => router.back()} className="w-11 h-11 bg-white border border-slate-200 rounded-2xl flex items-center justify-center text-slate-600 hover:text-blue-600 hover:border-blue-100 transition-all shadow-sm">
                 <ArrowLeft size={20} />
               </button>
               <div>
-                <h1 className="text-2xl font-black text-slate-600 tracking-tight uppercase">Sesi Bimbingan {data?.sesi_ke}</h1>
+                <h1 className="text-2xl font-black text-slate-600 tracking-tight uppercase">Sesi Bimbingan {data.sesi_ke}</h1>
                 <p className="text-slate-500 text-sm font-medium">Lengkapi progres bimbingan Anda di bawah ini.</p>
               </div>
             </div>
             <div className="flex items-center gap-3 px-5 py-2.5 bg-white rounded-2xl border border-slate-200 shadow-sm text-sm font-bold text-slate-600">
                 <Calendar size={16} className="text-blue-500" />
-                {new Date(data?.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
+                {new Date(data.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
                 <span className="mx-1 text-slate-300">|</span>
                 <Clock size={16} className="text-blue-500" />
-                {data?.jam?.slice(0, 5)} WIB
+                {data.jam?.slice(0, 5)} WIB
             </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            {/* SISI KIRI (8 KOLOM) */}
             <div className="lg:col-span-8 space-y-8">
               
-              {/* KARTU PROFIL MAHASISWA */}
               <div className="bg-white rounded-[2.5rem] border border-white shadow-xl shadow-slate-200/50 p-8 relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-10 opacity-[0.03]">
-                    <User size={160} />
-                </div>
+                <div className="absolute top-0 right-0 p-10 opacity-[0.03]"><User size={160} /></div>
                 <div className="relative flex items-start gap-6">
                   <div className="w-24 h-24 bg-slate-100 rounded-[2rem] flex items-center justify-center shrink-0 border-2 border-white shadow-inner">
                     <User size={48} className="text-slate-400" />
                   </div>
                   <div className="flex-1">
-                    <h2 className="text-2xl font-black text-slate-800 tracking-tight uppercase">{data?.proposal?.user?.nama}</h2>
-                    <p className="text-blue-600 font-bold tracking-[0.15em] text-xs uppercase mt-1">{data?.proposal?.user?.npm}</p>
+                    {/* Perbaikan tipe data untuk menghindari error TS */}
+                    <h2 className="text-2xl font-black text-slate-800 tracking-tight uppercase">{data.proposal?.user?.nama}</h2>
+                    <p className="text-blue-600 font-bold tracking-[0.15em] text-xs uppercase mt-1">{data.proposal?.user?.npm}</p>
                     <p className="mt-4 text-slate-600 font-semibold leading-relaxed bg-slate-50 p-5 rounded-2xl border border-slate-100">
-                      "{data?.proposal?.judul}"
+                      "{data.proposal?.judul}"
                     </p>
                   </div>
                 </div>
@@ -285,7 +263,6 @@ export default function DetailBimbinganMahasiswaClient() {
                 </div>
               </div>
 
-              {/* UNGGAH DOKUMEN & CATATAN */}
               <div className={`bg-white rounded-[2.5rem] border border-white shadow-xl shadow-slate-200/50 p-8 transition-all ${isLocked ? 'bg-slate-50/50 grayscale-[0.5]' : ''}`}>
                 <div className="flex items-center justify-between mb-8">
                   <div className="flex items-center gap-3">
@@ -320,7 +297,7 @@ export default function DetailBimbinganMahasiswaClient() {
                     </div>
                   )}
 
-                  {data?.drafts && data.drafts.map((draft: any) => (
+                  {data.drafts && data.drafts.map((draft: any) => (
                     <div key={draft.id} className="bg-white border border-slate-100 rounded-2xl p-5 flex items-center justify-between shadow-sm group">
                       <div className="flex items-center gap-4">
                         <div className="p-3 bg-slate-50 group-hover:bg-blue-50 rounded-xl transition-colors text-slate-400 group-hover:text-blue-600"><FileText size={24} /></div>
@@ -334,31 +311,31 @@ export default function DetailBimbinganMahasiswaClient() {
                         </div>
                       </div>
                      <div className="flex gap-2">
-  {!isLocked && (
-    <button
-      onClick={async () => {
-        if(!confirm("Hapus file ini?")) return;
-        await supabase.from("session_drafts").delete().eq("id", draft.id);
-        window.location.reload();
-      }}
-      className="p-2 text-slate-300 hover:text-red-500 transition-colors"
-    >
-      <Trash2 size={20} />
-    </button>
-  )}
+                      {!isLocked && (
+                        <button
+                          onClick={async () => {
+                            if(!confirm("Hapus file ini?")) return;
+                            await supabase.from("session_drafts").delete().eq("id", draft.id);
+                            mutate(); 
+                          }}
+                          className="p-2 text-slate-300 hover:text-red-500 transition-colors"
+                        >
+                          <Trash2 size={20} />
+                        </button>
+                      )}
 
-  <button
-    onClick={() => handleDownloadDraft(draft.file_url)}
-    className="p-2 text-slate-300 hover:text-blue-600 transition-colors"
-  >
-    <ExternalLink size={20} />
-  </button>
-</div>
+                      <button
+                        onClick={() => handleDownloadDraft(draft.file_url)}
+                        className="p-2 text-slate-300 hover:text-blue-600 transition-colors"
+                      >
+                        <ExternalLink size={20} />
+                      </button>
+                    </div>
 
                     </div>
                   ))}
 
-                  {!file && (!data?.drafts || data.drafts.length === 0) && (
+                  {!file && (!data.drafts || data.drafts.length === 0) && (
                     <div className="p-12 border-2 border-dashed border-slate-200 rounded-[2rem] text-center bg-slate-50/50">
                       <FileText className="mx-auto text-slate-300 mb-4" size={40} />
                       <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">Belum ada draft bimbingan.</p>
@@ -373,8 +350,8 @@ export default function DetailBimbinganMahasiswaClient() {
                   </div>
                   <div className="relative">
                     <textarea 
-                      value={catatanInput}
-                      onChange={(e) => setCatatanInput(e.target.value)}
+                      value={catatanAktif}
+                      onChange={(e) => setLocalCatatan(e.target.value)}
                       disabled={isLocked}
                       className="w-full h-40 bg-slate-50 border border-slate-200 rounded-2xl p-5 text-sm font-medium focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-all outline-none resize-none disabled:bg-white disabled:text-slate-400"
                       placeholder={isLocked ? "Catatan sudah terkirim..." : "Tuliskan apa saja yang sudah kamu kerjakan..."}
@@ -400,7 +377,6 @@ export default function DetailBimbinganMahasiswaClient() {
               </div>
             </div>
 
-            {/* SISI KANAN (4 KOLOM) */}
             <div className="lg:col-span-4 space-y-8">
               
               {/* KOMENTAR DOSEN */}
@@ -412,7 +388,7 @@ export default function DetailBimbinganMahasiswaClient() {
 
                 {feedbacks.length > 0 ? (
                     <div className="space-y-6">
-                        {feedbacks.map((fb) => (
+                        {feedbacks.map((fb: any) => (
                         <div key={fb.id} className="relative pl-6 border-l-2 border-slate-100">
                             <div className="absolute -left-[5px] top-0 w-2 h-2 rounded-full bg-blue-500"></div>
                             <div className="flex justify-between items-start mb-2">
@@ -442,21 +418,18 @@ export default function DetailBimbinganMahasiswaClient() {
                 )}
               </div>
 
-             {/* Card Dokumen & Catatan Mahasiswa */}
-           <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">Feedback Dosen</h3>
+             <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+              <h3 className="text-lg font-bold text-gray-900 mb-4">File Feedback</h3>
   
-           {feedbackWithFile ? (
-  <button
-    onClick={() => handleDownloadFeedback(feedbackWithFile.file_url)}
-                className="w-full flex items-center justify-between bg-white border border-gray-200 p-4 rounded-xl mb-6 shadow-sm hover:border-blue-300 hover:bg-blue-50/30 transition-all duration-200 group text-left overflow-hidden"
-              >
+              {feedbackWithFile ? (
+                <button
+                    onClick={() => handleDownloadFeedback(feedbackWithFile.file_url)}
+                    className="w-full flex items-center justify-between bg-white border border-gray-200 p-4 rounded-xl mb-6 shadow-sm hover:border-blue-300 hover:bg-blue-50/30 transition-all duration-200 group text-left overflow-hidden"
+                >
                 <div className="flex items-center gap-4 flex-1 min-w-0">
-                  {/* Icon wrapper dengan efek hover */}
                   <div className="p-3 bg-blue-50 rounded-lg text-blue-600 shrink-0 group-hover:bg-blue-100 group-hover:scale-105 transition-all">
                     <FileText size={24} />
                   </div>
-                  
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-bold text-gray-800 truncate group-hover:text-blue-900">
                       {decodeURIComponent(feedbackWithFile.file_url.split("/").pop()?.split("_").slice(1).join("_") || "File Pelengkap")}
@@ -466,8 +439,6 @@ export default function DetailBimbinganMahasiswaClient() {
                     </p>
                   </div>
                 </div>
-
-                {/* Indikator Unduh di sisi kanan */}
                 <div className="ml-4 p-2 text-gray-400 group-hover:text-blue-600 transition-colors shrink-0">
                   <Download size={20} />
                 </div>
@@ -480,8 +451,6 @@ export default function DetailBimbinganMahasiswaClient() {
                 </p>
               </div>
               )}
-               
-              
               </div>
             </div>
           </div>
@@ -490,5 +459,3 @@ export default function DetailBimbinganMahasiswaClient() {
     </div>
   );
 }
-
-

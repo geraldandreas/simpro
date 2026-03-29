@@ -27,163 +27,175 @@ export default function PenjadwalanSidangKaprodiClient() {
 
   const [penguji1, setPenguji1] = useState("");
   const [penguji2, setPenguji2] = useState("");
+  const [penguji3, setPenguji3] = useState(""); 
+  
   const [tanggal, setTanggal] = useState("");
   const [jam, setJam] = useState("");
   const [ruangan, setRuangan] = useState("");
   const [loading, setLoading] = useState(false);
-  
 
   // 🔥 Handler View File
-const handleViewFile = async (rawPath: string) => {
-  if (!rawPath) return;
-  try {
-    const bucketName = 'seminar_perbaikan';
-    
-    // Membersihkan path: Menghapus nama bucket dan slash awal jika ada
-    // Misal: "seminar_perbaikan/folder/file.pdf" menjadi "folder/file.pdf"
-    let cleanPath = rawPath.replace(`${bucketName}/`, "");
-    
-    // Hapus slash di paling depan jika masih ada
-    if (cleanPath.startsWith('/')) cleanPath = cleanPath.substring(1);
-
-    const { data: signedData, error } = await supabase.storage
-      .from(bucketName) 
-      .createSignedUrl(cleanPath, 3600);
-
-    if (error || !signedData?.signedUrl) {
-      console.error("Storage Error Detail:", error);
-      throw new Error("Gagal generate link");
-    }
-    
-    window.open(signedData.signedUrl, '_blank');
-  } catch (err) {
-    console.error("View File Error:", err);
-    alert("Gagal membuka berkas. Pastikan file tersedia di storage.");
-  }
-};
-
-useEffect(() => {
-  if (!seminarRequestId) return;
-
-  const loadData = async () => {
+  const handleViewFile = async (rawPath: string) => {
+    if (!rawPath) return;
     try {
-      const urlRevisionId = searchParams.get("rev");
+      const bucketName = 'docseminar'; 
+      let cleanPath = rawPath.replace(`${bucketName}/`, "");
+      if (cleanPath.startsWith('/')) cleanPath = cleanPath.substring(1);
 
-      // 1. Ambil Data Seminar & Proposal
-      const { data: seminar, error: semErr } = await supabase
-        .from("seminar_requests")
-        .select(`
-          id,
-          proposal:proposals (
-            id, judul,
-            user:profiles (id, nama, npm),
-            supervisors:thesis_supervisors (role, dosen:profiles(nama))
-          )
-        `)
-        .eq("id", seminarRequestId)
-        .single();
+      const { data: signedData, error } = await supabase.storage
+        .from(bucketName) 
+        .createSignedUrl(cleanPath, 3600);
 
-      if (semErr || !seminar) throw new Error("Data seminar tidak ditemukan");
-
-      // 2. Ambil Data Revisi (LOGIKA TUNGGAL)
-      let revisionQuery = supabase.from("seminar_revisions").select("id, file_path");
-      
-      if (urlRevisionId) {
-        revisionQuery = revisionQuery.eq("id", urlRevisionId);
-      } else {
-        revisionQuery = revisionQuery
-          .eq("seminar_request_id", seminarRequestId)
-          .order("created_at", { ascending: false })
-          .limit(1);
+      if (error || !signedData?.signedUrl) {
+        console.error("Storage Error Detail:", error);
+        throw new Error("Gagal generate link");
       }
-      const { data: revision } = await revisionQuery.maybeSingle();
-
-      // 3. Ambil Jadwal Sidang
-      // Di dalam useEffect -> loadData
-const { data: existingSidang } = await supabase
-  .from("sidang_requests")
-  .select(`id, status, tanggal_sidang, jam_sidang, ruangan, 
-    penguji1:sidang_requests_penguji1_fkey(id), 
-    penguji2:sidang_requests_penguji2_fkey(id)`)
-  .eq("seminar_request_id", seminarRequestId)
-  .maybeSingle();
-
-if (existingSidang) {
-  // 🔥 KUNCI UTAMA: Form TERKUNCI hanya jika statusnya BUKAN 'menunggu_penjadwalan'
-  // Jika statusnya 'menunggu_penjadwalan', isLocked akan FALSE, sehingga form TERBUKA.
-  const isLocked = existingSidang.status !== "menunggu_penjadwalan";
-  setAlreadyScheduled(isLocked);
-
-  // Masukkan data ke input (jika Kaprodi sudah pernah isi draft tapi belum konfirmasi)
-  setTanggal(existingSidang.tanggal_sidang || "");
-  setJam(existingSidang.jam_sidang || "");
-  setRuangan(existingSidang.ruangan || "");
-  
-  const sid = existingSidang as any;
-  setPenguji1(sid.penguji1?.id || "");
-  setPenguji2(sid.penguji2?.id || "");
-} else {
-  // Jika baris data sama sekali belum ada
-  setAlreadyScheduled(false);
-}
-
-      // 4. Ambil Daftar Dosen
-      const { data: dosenData } = await supabase.from("profiles").select("id, nama").eq("role", "dosen").order("nama");
-      setLecturers(dosenData || []);
-
-      // 🔥 SET DATA SEKALI SAJA (Kunci agar tombol muncul)
-      setData({
-        ...seminar,
-        revisionFile: revision?.file_path || null,
-        revisionId: revision?.id || null
-      });
-
-    } catch (err: any) {
-      console.error("Load Error:", err.message);
+      
+      window.open(signedData.signedUrl, '_blank');
+    } catch (err) {
+      console.error("View File Error:", err);
+      alert("Gagal membuka berkas. Pastikan file tersedia di storage.");
     }
   };
 
-  loadData();
-}, [seminarRequestId]);
+  useEffect(() => {
+    if (!seminarRequestId) return;
+
+    const loadData = async () => {
+      try {
+        // 1. Ambil Data Seminar & Proposal
+        const { data: seminar, error: semErr } = await supabase
+          .from("seminar_requests")
+          .select(`
+            id,
+            proposal:proposals (
+              id, judul,
+              user:profiles (id, nama, npm, avatar_url), 
+              supervisors:thesis_supervisors (role, dosen:profiles(nama))
+            )
+          `)
+          .eq("id", seminarRequestId)
+          .single();
+
+        if (semErr || !seminar) throw new Error("Data seminar tidak ditemukan");
+
+        // 🔥 PERBAIKAN TYPESCRIPT ERROR DI SINI
+        // Memakai optional chaining (?) dan fallback agar TypeScript tidak merah
+        const proposalId = (seminar.proposal as any)?.id;
+        if (!proposalId) throw new Error("ID Proposal tidak ditemukan");
+
+        // 2. Ambil File Skripsi Final dari tabel verifikasi sidang
+        const { data: sidangDoc } = await supabase
+          .from("sidang_documents_verification")
+          .select("file_url")
+          .eq("proposal_id", proposalId)
+          .eq("nama_dokumen", "file_skripsi_final")
+          .eq("status", "Lengkap")
+          .maybeSingle();
+
+        // 3. Ambil Daftar Dosen untuk Dropdown
+        const { data: dosenData } = await supabase.from("profiles").select("id, nama").eq("role", "dosen").order("nama");
+        setLecturers(dosenData || []);
+
+        // 4. Ambil Jadwal Sidang (yang diajukan mahasiswa)
+        const { data: existingSidang } = await supabase
+          .from("sidang_requests")
+          .select(`id, status, tanggal_sidang, jam_sidang, ruangan, penguji1, penguji2, penguji3`)
+          .eq("seminar_request_id", seminarRequestId)
+          .maybeSingle();
+
+        // 5. Selalu tarik data penguji dari riwayat seminar sebagai nilai default
+        const { data: riwayatPenguji } = await supabase
+          .from("examiners")
+          .select("dosen_id, role")
+          .eq("seminar_request_id", seminarRequestId);
+
+        let defaultP1 = "";
+        let defaultP2 = "";
+        let defaultP3 = "";
+
+        if (riwayatPenguji) {
+          defaultP1 = riwayatPenguji.find(p => p.role === 'penguji1' || p.role === 'utama')?.dosen_id || "";
+          defaultP2 = riwayatPenguji.find(p => p.role === 'penguji2' || p.role === 'anggota1')?.dosen_id || "";
+          defaultP3 = riwayatPenguji.find(p => p.role === 'penguji3' || p.role === 'anggota2')?.dosen_id || "";
+        }
+
+        if (existingSidang) {
+          const isLocked = existingSidang.status !== "menunggu_penjadwalan";
+          setAlreadyScheduled(isLocked);
+
+          setTanggal(existingSidang.tanggal_sidang || "");
+          setJam(existingSidang.jam_sidang || "");
+          setRuangan(existingSidang.ruangan || "");
+          
+          setPenguji1(existingSidang.penguji1 || defaultP1);
+          setPenguji2(existingSidang.penguji2 || defaultP2);
+          setPenguji3(existingSidang.penguji3 || defaultP3); 
+        } else {
+          setAlreadyScheduled(false);
+          setPenguji1(defaultP1);
+          setPenguji2(defaultP2);
+          setPenguji3(defaultP3);
+        }
+
+        setData({
+          ...seminar,
+          revisionFile: sidangDoc?.file_url || null, 
+        });
+
+      } catch (err: any) {
+        console.error("Load Error:", err.message);
+      }
+    };
+
+    loadData();
+  }, [seminarRequestId]);
 
   /** --- HANDLERS --- **/
 
   const handleSubmit = async () => {
-  if (!tanggal || !jam || !ruangan || !penguji1 || !penguji2) {
-    alert("Harap lengkapi semua form.");
-    return;
-  }
-  setLoading(true);
+    if (!tanggal || !jam || !ruangan || !penguji1 || !penguji2 || !penguji3) {
+      alert("Harap lengkapi semua form waktu dan pastikan ketiga dosen penguji terisi.");
+      return;
+    }
+    
+    if (penguji1 === penguji2 || penguji1 === penguji3 || penguji2 === penguji3) {
+      alert("Dosen Penguji tidak boleh orang yang sama.");
+      return;
+    }
 
-  try {
-    // 🔥 PERBAIKAN: Sertakan proposal_id dan seminar_revision_id agar tidak NULL
-    const { error: sidangErr } = await supabase
-      .from("sidang_requests")
-      .upsert({
-        seminar_request_id: data.id,       // ID Utama untuk ON CONFLICT
-        proposal_id: data.proposal.id,     // WAJIB ADA (Sesuai error not-null)
-        seminar_revision_id: data.revisionId, // Disarankan ada
-        tanggal_sidang: tanggal,
-        jam_sidang: jam,
-        ruangan: ruangan,
-        penguji1: penguji1,
-        penguji2: penguji2,
-        status: "dijadwalkan"              // Pengunci status
-      }, { onConflict: 'seminar_request_id' });
+    setLoading(true);
 
-    if (sidangErr) throw sidangErr;
+    try {
+      const { error: sidangErr } = await supabase
+        .from("sidang_requests")
+        .upsert({
+          seminar_request_id: data.id,       
+          proposal_id: data.proposal.id,     
+          tanggal_sidang: tanggal,
+          jam_sidang: jam,
+          ruangan: ruangan,
+          penguji1: penguji1,
+          penguji2: penguji2,
+          penguji3: penguji3, 
+          status: "dijadwalkan"              
+        }, { onConflict: 'seminar_request_id' });
 
-    // Update status seminar utama menjadi Siap Sidang
-    await supabase
-      .from("seminar_requests")
-      .update({ status: "Siap Sidang" })
-      .eq("id", data.id);
-      // Notifikasi ke mahasiswa
+      if (sidangErr) throw sidangErr;
+
+      await supabase
+        .from("seminar_requests")
+        .update({ status: "Siap Sidang" })
+        .eq("id", data.id);
+
+      const formattedDate = new Date(tanggal).toLocaleDateString('id-ID', { 
+        day: 'numeric', month: 'long', year: 'numeric' 
+      });
+      const mhsName = data.proposal?.user?.nama || "Seorang Mahasiswa";
+
+      // 1. KIRIM NOTIFIKASI KE MAHASISWA
       const studentId = data.proposal?.user?.id;
       if (studentId) {
-        const formattedDate = new Date(tanggal).toLocaleDateString('id-ID', { 
-          day: 'numeric', month: 'long', year: 'numeric' 
-        });
         await sendNotification(
           studentId,
           "Jadwal Sidang Skripsi",
@@ -191,17 +203,28 @@ if (existingSidang) {
         );
       }
 
-      setAlreadyScheduled(true);
-    alert("✅ Jadwal sidang berhasil dikonfirmasi dan dikunci.");
-    router.push("/kaprodi/dashboardkaprodi/pengajuansidang");
-  } catch (err: any) {
-    alert("Gagal: " + err.message);
-  } finally {
-    setLoading(false);
-  }
-};
+      // 2. KIRIM NOTIFIKASI KE KETIGA DOSEN PENGUJI
+      const dosenIds = [penguji1, penguji2, penguji3];
+      for (const dId of dosenIds) {
+        if (dId) {
+          await sendNotification(
+            dId,
+            "Tugas Menguji Sidang Skripsi",
+            `Anda ditugaskan sebagai Penguji Sidang untuk mahasiswa ${mhsName} pada ${formattedDate} pukul ${jam} WIB di ${ruangan}.`
+          );
+        }
+      }
 
-  
+      setAlreadyScheduled(true);
+      alert("✅ Jadwal sidang berhasil dikonfirmasi dan dikirim ke seluruh pihak terkait.");
+      router.push("/kaprodi/dashboardkaprodi/pengajuansidang");
+    } catch (err: any) {
+      alert("Gagal: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (!data) return (
     <div className="h-screen flex flex-col items-center justify-center bg-[#F4F7FE]">
       <div className="animate-spin h-10 w-10 border-4 border-blue-600 border-t-transparent rounded-full mb-4"></div>
@@ -213,7 +236,7 @@ if (existingSidang) {
   const pemb1 = sup.find((s: any) => s.role === "utama")?.dosen?.nama || "-";
   const pemb2 = sup.find((s: any) => s.role === "pendamping")?.dosen?.nama || "-";
 
-  const syaratTercapai =  !!data?.revisionFile;
+  const syaratTercapai = true; 
 
   return (
     <div className="min-h-screen bg-[#F4F7FE] flex flex-col font-sans text-slate-700 uppercase tracking-tighter">
@@ -243,8 +266,12 @@ if (existingSidang) {
           <div className="lg:col-span-8 space-y-8">
             <div className="bg-white rounded-[2.5rem] border border-white shadow-xl p-10 relative overflow-hidden group">
               <div className="flex items-center gap-8 relative z-10 mb-10">
-                <div className="w-28 h-28 bg-slate-100 rounded-[2.5rem] flex items-center justify-center border-4 border-white shadow-xl shrink-0">
-                  <User size={56} className="text-slate-300" />
+                <div className="w-28 h-28 bg-slate-100 rounded-[2.5rem] flex items-center justify-center border-4 border-white shadow-xl shrink-0 relative overflow-hidden">
+                  {data.proposal.user.avatar_url ? (
+                    <img src={data.proposal.user.avatar_url} alt="Profil" className="w-full h-full object-cover" />
+                  ) : (
+                    <User size={56} className="text-slate-300" />
+                  )}
                 </div>
                 <div>
                   <h2 className="text-2xl font-black text-slate-800 tracking-tight leading-none uppercase">{data.proposal.user.nama}</h2>
@@ -256,7 +283,6 @@ if (existingSidang) {
                 "{data.proposal.judul}"
               </div>
 
-              {/* TAMPILAN FILE DARI BUCKET seminar_perbaikan */}
               {data.revisionFile && (
                 <div className="flex items-center justify-between p-6 bg-emerald-50/50 border border-emerald-100 rounded-[2.5rem] group hover:bg-emerald-50 transition-all shadow-sm">
                   <div className="flex items-center gap-5">
@@ -264,7 +290,7 @@ if (existingSidang) {
                       <FileText size={28} />
                     </div>
                     <div>
-                      <p className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.2em] leading-none mb-2">Berkas Perbaikan Seminar</p>
+                      <p className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.2em] leading-none mb-2">Draft Skripsi Final (Verified)</p>
                       <p className="text-sm font-bold text-slate-700 truncate max-w-[250px] normal-case">{data.revisionFile.split('/').pop()}</p>
                     </div>
                   </div>
@@ -321,7 +347,8 @@ if (existingSidang) {
               <div className="space-y-6" >
                 {[
                   { val: penguji1, set: setPenguji1, label: "Penguji Utama" },
-                  { val: penguji2, set: setPenguji2, label: "Penguji Anggota" }
+                  { val: penguji2, set: setPenguji2, label: "Penguji Anggota 1" },
+                  { val: penguji3, set: setPenguji3, label: "Penguji Anggota 2" }
                 ].map((p, idx) => (
                   <div key={idx} className="space-y-2">
                     <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">{p.label}</label>
@@ -334,28 +361,28 @@ if (existingSidang) {
                     </div>
                   </div>
                 ))}
+                
                 <button 
-  onClick={handleSubmit}
-  // Tombol mati jika: Sedang loading OR Sudah dijadwalkan OR Syarat belum lengkap
-  disabled={loading || alreadyScheduled || !syaratTercapai}
-  className={`w-full mt-4 py-5 rounded-2xl font-black transition-all shadow-xl active:scale-95 text-xs uppercase tracking-[0.15em] flex items-center justify-center gap-3
-    ${alreadyScheduled 
-      ? 'bg-emerald-50 text-emerald-600 border border-emerald-100 shadow-none' 
-      : !syaratTercapai
-        ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none' // Warna abu-abu jika syarat kurang
-        : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-200'}
-  `}
->
-  {alreadyScheduled ? (
-    <><ShieldCheck size={18} /> Jadwal Terkonfirmasi</>
-  ) : !syaratTercapai ? (
-    "Syarat Belum Lengkap"
-  ) : loading ? (
-    "Memproses..."
-  ) : (
-    "Konfirmasi Jadwal"
-  )}
-</button>
+                  onClick={handleSubmit}
+                  disabled={loading || alreadyScheduled || !syaratTercapai}
+                  className={`w-full mt-4 py-5 rounded-2xl font-black transition-all shadow-xl active:scale-95 text-xs uppercase tracking-[0.15em] flex items-center justify-center gap-3
+                    ${alreadyScheduled 
+                      ? 'bg-emerald-50 text-emerald-600 border border-emerald-100 shadow-none' 
+                      : !syaratTercapai
+                        ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none' 
+                        : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-200'}
+                  `}
+                >
+                  {alreadyScheduled ? (
+                    <><ShieldCheck size={18} /> Jadwal Terkonfirmasi</>
+                  ) : !syaratTercapai ? (
+                    "Syarat Belum Lengkap"
+                  ) : loading ? (
+                    "Memproses..."
+                  ) : (
+                    "Konfirmasi Jadwal"
+                  )}
+                </button>
               </div>
             </div>
           </div>

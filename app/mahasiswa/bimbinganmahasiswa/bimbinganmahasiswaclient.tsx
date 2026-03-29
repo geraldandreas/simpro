@@ -1,13 +1,11 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
+import useSWR from "swr"; // 🔥 IMPORT SWR
 import Sidebar from "@/components/sidebar";
 import NotificationBell from "@/components/notificationBell";
 import Link from "next/link";
 import {
-  Bell,
-  ChevronLeft,
-  ChevronRight,
   Calendar,
   Clock,
   Video,
@@ -15,7 +13,9 @@ import {
   CheckCircle2,
   ArrowRight,
   LayoutDashboard,
-  Info
+  Info,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -25,7 +25,8 @@ interface BimbinganRow {
   sesi: string;
   hariTanggal: string;
   waktu: string;
-  metodeOrStatus: string;
+  metode: string;      // 🔥 Dipisah untuk SWR Cache
+  statusData: string;  // 🔥 Dipisah untuk SWR Cache
   keterangan: string;
   pembimbing: string;
   status: string;
@@ -33,122 +34,114 @@ interface BimbinganRow {
   feedback?: string;
 }
 
+// ================= FETCHER SWR =================
+const fetchBimbinganData = async () => {
+  const { data: session } = await supabase.auth.getSession();
+  const userId = session?.session?.user?.id;
+  if (!userId) throw new Error("Not authenticated");
+
+  const { data: proposalData, error: proposalError } = await supabase
+    .from("proposals")
+    .select("id, status")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (proposalError) throw proposalError;
+
+  // Jika proposal belum diterima, kembalikan array kosong instan
+  if (proposalData?.status !== "Diterima") {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("guidance_sessions")
+    .select(`
+      id, sesi_ke, tanggal, jam, metode, keterangan, status, kehadiran_mahasiswa,
+      dosen:profiles ( nama ),
+      proposal:proposals ( user_id ),
+      feedbacks:session_feedbacks ( status_revisi, created_at )
+    `)
+    .eq("proposal.user_id", userId)
+    .order("tanggal", { ascending: true });
+
+  if (error) throw error;
+
+  // Map data mentah (Independen dari state UI agar SWR bisa cache dengan aman)
+  const mapped: BimbinganRow[] = (data || []).map((row: any) => {
+    const tanggal = new Date(row.tanggal);
+    return {
+      id: row.id,
+      sesi: ` ${row.sesi_ke}`,
+      hariTanggal: tanggal.toLocaleDateString("id-ID", { weekday: "long", day: "2-digit", month: "long", year: "numeric" }),
+      waktu: row.jam?.slice(0, 5) ?? "-",
+      metode: row.metode || "-",
+      statusData: row.status || "-",
+      keterangan: row.keterangan || "-", 
+      pembimbing: row.dosen?.nama ?? "-",
+      status: row.status,
+      kehadiran: row.kehadiran_mahasiswa,
+      feedback: row.feedbacks[0]?.status_revisi,
+    };
+  });
+
+  return mapped;
+};
+
 export default function BimbinganMahasiswaClient() {
   const [activeTab, setActiveTab] = useState<"jadwal" | "riwayat">("jadwal");
-  const [rows, setRows] = useState<BimbinganRow[]>([]);
-  const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
 
-  // ================= FETCH DATA (Backend Logic Tetap) =================
-  const fetchBimbingan = async () => {
-    try {
-      setLoading(true);
-      const { data: session } = await supabase.auth.getSession();
-      const userId = session?.session?.user?.id;
-      if (!userId) return;
+  // 🔥 IMPLEMENTASI SWR 🔥
+  const { data: rows = [], isLoading } = useSWR('list_bimbingan_mhs', fetchBimbinganData, {
+    revalidateOnFocus: true, // Auto-refresh saat kembali ke tab ini
+  });
 
-      const { data: proposalData, error: proposalError } = await supabase
-        .from("proposals")
-        .select("id, status")
-        .eq("user_id", userId)
-        .single();
-
-      if (proposalError) throw proposalError;
-
-      if (proposalData?.status !== "Diterima") {
-        setRows([]);
-        setLoading(false);
-        return;
-      }
-
-      // Query mengambil data termasuk 'keterangan' dari tabel guidance_sessions
-      const { data, error } = await supabase
-        .from("guidance_sessions")
-        .select(`
-          id, sesi_ke, tanggal, jam, metode, keterangan, status, kehadiran_mahasiswa,
-          dosen:profiles ( nama ),
-          proposal:proposals ( user_id ),
-          feedbacks:session_feedbacks ( status_revisi, created_at )
-        `)
-        .eq("proposal.user_id", userId)
-        .order("tanggal", { ascending: true });
-
-      if (error) throw error;
-
-      const mapped: BimbinganRow[] = (data || []).map((row: any) => {
-        const tanggal = new Date(row.tanggal);
-        return {
-          id: row.id,
-          sesi: ` ${row.sesi_ke}`,
-          hariTanggal: tanggal.toLocaleDateString("id-ID", { weekday: "long", day: "2-digit", month: "long", year: "numeric" }),
-          waktu: row.jam?.slice(0, 5) ?? "-",
-          metodeOrStatus: activeTab === "jadwal" ? row.metode || "-" : row.status || "-",
-          keterangan: row.keterangan || "-", // Map keterangan manual dosen
-          pembimbing: row.dosen?.nama ?? "-",
-          status: row.status,
-          kehadiran: row.kehadiran_mahasiswa,
-          feedback: row.feedbacks[0]?.status_revisi,
-        };
-      });
-      setRows(mapped);
-    } catch (err) {
-      console.error("❌ Gagal load bimbingan:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { fetchBimbingan(); }, [activeTab]);
-
-// 🔥 1. FILTER DATA TERLEBIH DAHULU (Menghilangkan error variabel tidak ditemukan)
+  // 🔥 1. FILTER DATA TERLEBIH DAHULU
   const filteredRows = activeTab === "jadwal"
     ? rows.filter(r => r.status !== "selesai" && r.status !== "revisi" && r.status !== "dibatalkan")
     : rows.filter(r => (r.feedback === "disetujui" || r.feedback === "revisi") && r.kehadiran === "hadir");
 
-  // 🔥 2. LOGIKA SLICING (Menghitung data yang tampil di halaman aktif)
+  // 🔥 2. LOGIKA SLICING (Pagination)
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
   const currentData = filteredRows.slice(indexOfFirstItem, indexOfLastItem);
   const totalPages = Math.ceil(filteredRows.length / itemsPerPage);
+
+  // Fungsi saat pindah tab agar halaman kembali ke 1
+  const handleTabChange = (tab: "jadwal" | "riwayat") => {
+    setActiveTab(tab);
+    setCurrentPage(1);
+  };
+
   return (
     <div className="flex min-h-screen bg-[#F4F7FE] font-sans text-slate-700">
       <Sidebar />
 
       <main className="flex-1 ml-64 min-h-screen flex flex-col h-screen overflow-hidden">
-        {/* HEADER - Glassmorphism Simplified */}
+        {/* HEADER */}
         <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
-                  <div className="flex items-center gap-6">
-                    <div className="relative w-72 group">
-                    </div>
-                  </div>
-        
-                <div className="flex items-center gap-6">
-            {/* KOMPONEN LONCENG BARU */}
+          <div className="flex items-center gap-6"><div className="relative w-72 group"></div></div>
+          <div className="flex items-center gap-6">
             <NotificationBell />
-            
             <div className="h-8 w-[1px] bg-slate-200 mx-2" />
-        
-                  <div className="flex items-center gap-6">
-                    {/* Minimalist SIMPRO Text */}
-                    <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
-                      Simpro
-                    </span>
-                  </div>
-                  </div>
-                </header>
+            <div className="flex items-center gap-6">
+              <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">Simpro</span>
+            </div>
+          </div>
+        </header>
 
         <div className="flex-1 overflow-y-auto p-10 custom-scrollbar">
           <div className="max-w-[1400px] mx-auto">
             <header className="mb-10 flex flex-col gap-2">
-                <h1 className="text-3xl font-black text-slate-800 tracking-tight uppercase">Manajemen Bimbingan</h1>
+                <h1 className="text-3xl font-black text-slate-800 tracking-tight">Manajemen Bimbingan</h1>
                 <p className="text-slate-500 font-medium mt-1">Pantau jadwal dan ringkasan riwayat konsultasi akademik Anda secara real-time.</p>
             </header>
 
             {/* TABS */}
             <div className="flex bg-slate-200/50 w-fit p-1.5 rounded-2xl mb-10 shadow-inner">
               <button
-                onClick={() => setActiveTab("jadwal")}
+                onClick={() => handleTabChange("jadwal")}
                 className={`px-8 py-2.5 text-xs font-black rounded-xl transition-all duration-300 uppercase tracking-widest ${
                   activeTab === "jadwal" ? "bg-white text-blue-600 shadow-md" : "text-slate-500 hover:text-slate-700"
                 }`}
@@ -156,7 +149,7 @@ export default function BimbinganMahasiswaClient() {
                 Jadwal Mendatang
               </button>
               <button
-                onClick={() => setActiveTab("riwayat")}
+                onClick={() => handleTabChange("riwayat")}
                 className={`px-8 py-2.5 text-xs font-black rounded-xl transition-all duration-300 uppercase tracking-widest ${
                   activeTab === "riwayat" ? "bg-white text-blue-600 shadow-md" : "text-slate-500 hover:text-slate-700"
                 }`}
@@ -165,7 +158,7 @@ export default function BimbinganMahasiswaClient() {
               </button>
             </div>
 
-            {/* TABLE CONTAINER - Proportional Column Widths */}
+            {/* TABLE CONTAINER */}
             <div className="bg-white rounded-[2.5rem] border border-white shadow-xl shadow-slate-200/50 overflow-hidden">
               <div className="p-8 border-b border-slate-50 bg-slate-50/30 flex items-center gap-3">
                 <div className="p-2.5 bg-blue-600 rounded-xl text-white shadow-lg shadow-blue-200">
@@ -199,7 +192,8 @@ export default function BimbinganMahasiswaClient() {
                   </thead>
 
                   <tbody className="divide-y divide-slate-50">
-                    {loading ? (
+                    {/* SKELETON LOADING BISA DITAMBAHKAN DI SINI, TAPI KITA PAKAI ROW ANIMATE SAJA AGAR UI TETAP SAMA */}
+                    {isLoading && rows.length === 0 ? (
                       <tr>
                         <td colSpan={6} className="px-8 py-20 text-center text-slate-400 font-bold animate-pulse uppercase tracking-widest">Sinkronisasi Data...</td>
                       </tr>
@@ -248,8 +242,9 @@ export default function BimbinganMahasiswaClient() {
                             <>
                               <td className="px-8 py-8">
                                 <div className="flex items-center gap-2 text-[10px] font-black text-slate-700 uppercase tracking-widest">
-                                  {item.metodeOrStatus === "Daring" ? <Video size={16} className="text-indigo-500" /> : <MapPin size={16} className="text-orange-500" />}
-                                  {item.metodeOrStatus}
+                                  {/* 🔥 Render berdasakan data spesifik, bukan fungsi ternary gabungan lagi */}
+                                  {item.metode === "Daring" ? <Video size={16} className="text-indigo-500" /> : <MapPin size={16} className="text-orange-500" />}
+                                  {item.metode}
                                 </div>
                               </td>
                               <td className="px-8 py-8">
@@ -296,7 +291,7 @@ export default function BimbinganMahasiswaClient() {
               {/* PAGINATION */}
               <div className="p-10 bg-slate-50/30 border-t border-slate-50 flex justify-between items-center">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
-                  Menampilkan {indexOfFirstItem + 1} - {Math.min(indexOfLastItem, filteredRows.length)} dari {filteredRows.length} Sesi
+                  Menampilkan {filteredRows.length > 0 ? indexOfFirstItem + 1 : 0} - {Math.min(indexOfLastItem, filteredRows.length)} dari {filteredRows.length} Sesi
                 </p>
                 
                 <div className="flex gap-2">
@@ -330,7 +325,7 @@ export default function BimbinganMahasiswaClient() {
   );
 }
 
-// 🔥 UPDATE HELPER PAGINATION BUTTON AGAR BISA KLIK
+// 🔥 HELPER PAGINATION BUTTON
 function PaginationButton({ 
   label, 
   icon, 

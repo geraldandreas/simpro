@@ -11,6 +11,7 @@ import {
   Settings,
   HelpCircle,
   LogOut,
+  Users, // 🔥 Import icon Users untuk Manajemen Akun
 } from "lucide-react";
 
 export default function SidebarTendik() {
@@ -53,6 +54,7 @@ export default function SidebarTendik() {
     }
   };
 
+  // 🔥 TAMBAHAN MENU MANAJEMEN AKUN DI SINI 🔥
   const MENU_ITEMS = [
     {
       label: "Dashboard",
@@ -63,6 +65,11 @@ export default function SidebarTendik() {
       label: "Verifikasi Berkas",
       icon: <FileText size={18} />,
       href: "/tendik/verifikasiberkas",
+    },
+    {
+      label: "Manajemen Akun",
+      icon: <Users size={18} />,
+      href: "/tendik/manajemenakun",
     },
   ];
 

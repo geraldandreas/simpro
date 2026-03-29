@@ -1,377 +1,395 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
-import Sidebar from "@/components/sidebar";
-import { sendNotification } from "@/lib/notificationUtils";
-import NotificationBell from "@/components/notificationBell";
-import { supabase } from "@/lib/supabaseClient";
-import {
-  CloudUpload,
-  FileText,
-  Bell,
-  Trash2,
-  Info,
-  ShieldCheck,
-  ArrowRight,
-  History
-} from "lucide-react";
+import React from 'react';
+import useSWR from 'swr';
+import Sidebar from '@/components/sidebar';
+import NotificationBell from '@/components/notificationBell';
+import { supabase } from '@/lib/supabaseClient';
+import { useRouter } from 'next/navigation';
+import { 
+  CheckCircle2, Clock, 
+  ChevronRight, 
+  User, MessageSquare, AlertCircle,
+  UserCheck, Download, FileText
+} from 'lucide-react';
 
-/* ================= UTIL ================= */
-const formatTanggal = (value?: string) => {
-  if (!value) return "-";
-  const d = new Date(value);
-  if (isNaN(d.getTime())) return "-";
-  return d.toLocaleDateString("id-ID", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
+interface ExaminerRevisi {
+  dosen_id: string;
+  role: string;
+  nama_dosen: string;
+  avatar_url: string | null;
+  status_revisi: string; 
+  ttd_url: string | null;
+  catatan_revisi: string;
+  jawaban_revisi: string;
+}
+
+// ================= FETCHER SWR =================
+const fetchRevisiData = async () => {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error("Not authenticated");
+
+  // 1. Ambil Proposal
+  const { data: proposal } = await supabase
+    .from('proposals')
+    .select(`id, judul, user:profiles(nama, npm)`)
+    .eq('user_id', session.user.id)
+    .maybeSingle();
+
+  if (!proposal) return null;
+
+  // 2. Ambil Data Seminar
+  const { data: request } = await supabase.from('seminar_requests')
+    .select('id')
+    .eq('proposal_id', proposal.id)
+    .eq('tipe', 'seminar')
+    .in('status', ['Selesai', 'Revisi', 'Disetujui']) 
+    .maybeSingle();
+  
+  if (!request) {
+    return { proposalData: proposal, seminarId: null, examiners: [], allAcc: false, schedule: null }; 
+  }
+
+  // 3. Fetch Penguji, Pembimbing, Feedback, dan Jadwal
+  const [
+    { data: pengujiData },
+    { data: pembimbingData },
+    { data: feedbackData },
+    { data: scheduleData }
+  ] = await Promise.all([
+    supabase.from('examiners').select(`dosen_id, role, dosen:profiles!examiners_dosen_id_fkey(nama, avatar_url, ttd_url)`).eq('seminar_request_id', request.id),
+    supabase.from('thesis_supervisors').select(`dosen_id, role, dosen:profiles(nama, avatar_url, ttd_url)`).eq('proposal_id', proposal.id),
+    supabase.from('seminar_feedbacks').select('dosen_id, status_revisi, catatan_revisi, jawaban_revisi').eq('seminar_request_id', request.id),
+    supabase.from('seminar_schedules').select('tanggal').eq('seminar_request_id', request.id).maybeSingle()
+  ]);
+
+  let mappedExaminers: ExaminerRevisi[] = [];
+  let isAllAcc = false;
+
+  // Gabungkan Penguji dan Pembimbing ke dalam satu array untuk dirender dan diekspor
+  const allDosenList = [...(pengujiData || []), ...(pembimbingData || [])];
+
+  if (allDosenList.length > 0) {
+    mappedExaminers = allDosenList.map((p: any) => {
+      const fb = feedbackData?.find(f => f.dosen_id === p.dosen_id);
+      const dosenInfo = Array.isArray(p.dosen) ? p.dosen[0] : p.dosen;
+      
+      return {
+        dosen_id: p.dosen_id,
+        role: p.role,
+        nama_dosen: dosenInfo?.nama || "Dosen",
+        avatar_url: dosenInfo?.avatar_url || null,
+        ttd_url: dosenInfo?.ttd_url || null, 
+        status_revisi: fb?.status_revisi || 'menunggu',
+        catatan_revisi: fb?.catatan_revisi || '',
+        jawaban_revisi: fb?.jawaban_revisi || '',
+      };
+    });
+
+    // Urutkan untuk tampilan UI
+    const roleOrder: Record<string, number> = { 'utama': 1, 'pembimbing1': 1, 'pendamping': 2, 'pembimbing2': 2, 'penguji1': 3, 'penguji2': 4, 'penguji3': 5 };
+    mappedExaminers.sort((a, b) => (roleOrder[a.role] || 99) - (roleOrder[b.role] || 99));
+    
+    // Cek apakah SEMUA Dosen (yang ada di tabel) sudah ACC
+    isAllAcc = mappedExaminers.length > 0 && mappedExaminers.every(e => e.status_revisi === 'diterima');
+  }
+
+  return {
+    proposalData: proposal,
+    seminarId: request.id,
+    examiners: mappedExaminers,
+    allAcc: isAllAcc,
+    schedule: scheduleData?.tanggal || ".................................................................."
+  };
 };
 
 export default function PerbaikanMahasiswaClient() {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
-  const [revision, setRevision] = useState<any>(null);
-  const [sidang, setSidang] = useState<any>(null);
+  const router = useRouter();
 
-  /* ================= FETCH ================= */
-  useEffect(() => {
-    fetchAll();
-  }, []);
+  const { data, error, isLoading } = useSWR('revisi_mahasiswa_data_full', fetchRevisiData, {
+    revalidateOnFocus: true,
+    refreshInterval: 30000 
+  });
 
-  const fetchAll = async () => {
-    try {
-      setLoading(true);
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
+  const proposalData = data?.proposalData;
+  const seminarId = data?.seminarId || null;
+  const examiners = data?.examiners || [];
+  const allAcc = data?.allAcc || false;
+  const scheduleDate = data?.schedule;
 
-      const { data: proposal } = await supabase
-        .from("proposals")
-        .select("id")
-        .eq("user_id", session.user.id)
-        .maybeSingle();
-
-        if (!proposal) return;
-
-      const { data: seminar } = await supabase
-        .from("seminar_requests")
-        .select("id")
-        .eq("proposal_id", proposal?.id)
-        .eq("tipe", "seminar")
-        .maybeSingle();
-
-      const { data: revisionData } = await supabase
-        .from("seminar_revisions")
-        .select("*")
-        .eq("seminar_request_id", seminar?.id)
-        .maybeSingle();
-
-      const { data: sidangData } = await supabase
-        .from("sidang_requests")
-        .select("*")
-        .eq("proposal_id", proposal?.id)
-        .maybeSingle();
-
-      setRevision(revisionData ?? null);
-      setSidang(sidangData ?? null);
-    } catch (err) {
-      console.error("Fetch gagal:", err);
-    } finally {
-      setLoading(false);
-    }
+  const formatRole = (role: string) => {
+    if (role === 'penguji1') return "Penguji Utama";
+    if (role === 'penguji2') return "Anggota Penguji 1";
+    if (role === 'penguji3') return "Anggota Penguji 2";
+    if (role === 'utama' || role === 'pembimbing1') return "Pembimbing Utama";
+    if (role === 'pendamping' || role === 'pembimbing2') return "Pembimbing Pendamping";
+    return "Penguji";
   };
 
-  /* ================= UPLOAD ================= */
-  const handleUpload = async (file: File) => {
-    try {
-      setUploading(true);
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
+  // ================= FUNGSI EXPORT FULL MATRIKS (ALL DOSEN) =================
+  const handleExportFullMatriks = () => {
+    if (!proposalData || examiners.length === 0) return;
 
-      const { data: proposal } = await supabase
-  .from("proposals")
-  .select(`
-    id,
-    judul,
-    user:profiles (
-      nama
-    )
-  `)
-  .eq("user_id", session.user.id)
-  .maybeSingle();
+    const mhsName = Array.isArray(proposalData.user) ? proposalData.user[0]?.nama : (proposalData.user as any)?.nama;
+    const mhsNpm = Array.isArray(proposalData.user) ? proposalData.user[0]?.npm : (proposalData.user as any)?.npm;
 
-      const { data: seminar } = await supabase
-        .from("seminar_requests")
-        .select("id")
-        .eq("proposal_id", proposal?.id)
-        .eq("tipe", "seminar")
-        .maybeSingle();
+    const formattedDate = scheduleDate?.includes("-") 
+      ? new Date(scheduleDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
+      : scheduleDate;
 
-      const filePath = `${seminar?.id}/${Date.now()}-${file.name}`;
+    const formatText = (text: string) => {
+      if (!text) return "<br><br><br>";
+      const lines = text.split('\n').filter(l => l.trim() !== '');
+      if (lines.length === 0) return "<br><br><br>";
+      return lines.map((line, idx) => `${String.fromCharCode(65 + idx)}. ${line}`).join('<br><br>');
+    };
 
-      const { error: storageError } = await supabase.storage
-        .from("seminar_perbaikan")
-        .upload(filePath, file, { upsert: true });
+    const getDosenByRole = (roleKeys: string[]) => {
+       return examiners.find(e => roleKeys.includes(e.role));
+    };
 
-      if (storageError) throw storageError;
+    const d_p1 = getDosenByRole(['utama', 'pembimbing1']);
+    const d_p2 = getDosenByRole(['pendamping', 'pembimbing2']);
+    const d_u1 = getDosenByRole(['penguji1']);
+    const d_u2 = getDosenByRole(['penguji2']);
+    const d_u3 = getDosenByRole(['penguji3']);
 
-      const { error: dbError } = await supabase
-        .from("seminar_revisions")
-        .upsert(
-          {
-            seminar_request_id: seminar?.id,
-            file_path: filePath,
-            original_name: file.name,
-          },
-          { onConflict: "seminar_request_id" }
-        );
-
-      if (dbError) throw dbError;
-      await fetchAll();
-    } catch (err) {
-      alert("Upload gagal");
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  /* ================= DELETE ================= */
-  const handleDelete = async () => {
-    if (!revision) return;
-    if (!confirm("Yakin ingin menghapus file perbaikan?")) return;
-
-    try {
-      setUploading(true);
-      await supabase.storage.from("seminar_perbaikan").remove([revision.file_path]);
-      await supabase.from("seminar_revisions").delete().eq("seminar_request_id", revision.seminar_request_id);
-      setRevision(null);
-    } catch (err) {
-      alert("Gagal menghapus file");
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  /* ================= AJUKAN SIDANG ================= */
-  const handleAjukanSidang = async () => {
-    if (!revision) return;
-    if (!confirm("Ajukan sidang skripsi sekarang?")) return;
-
-    try {
-      setUploading(true);
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-
-      const { data: proposal } = await supabase
-  .from("proposals")
-  .select(`
-    id,
-    judul,
-    user:profiles (
-      nama
-    )
-  `)
-  .eq("user_id", session.user.id)
-  .maybeSingle();
-
-      const { data: seminar } = await supabase.from("seminar_requests").select("id").eq("proposal_id", proposal?.id).eq("tipe", "seminar").maybeSingle();
-
-      const { error } = await supabase.from("sidang_requests").insert({
-        proposal_id: proposal?.id,
-        seminar_request_id: seminar?.id,
-        seminar_revision_id: revision.id,
-        status: "menunggu_penjadwalan",
-      });
-
-      if (error) {
-        if (error.code === "23505") return alert("Sidang sudah pernah diajukan.");
-        throw error;
+    // 🔥 UKURAN PRESISI 2.6cm x 2.51cm 🔥
+    const generateRow = (no: number, labelTitle: string, dosenData: ExaminerRevisi | undefined) => {
+      if (!dosenData) {
+        return `<tr><td style="border: 1px solid black; padding: 8px; text-align: center;">${no}.</td><td style="border: 1px solid black; padding: 8px;">${labelTitle}</td><td style="border: 1px solid black;"></td><td style="border: 1px solid black;"></td></tr>`;
       }
+      
+      // Memaksa ukuran MS Word ke CM
+      const ttdHtml = dosenData.ttd_url 
+        ? `<div style="text-align: center;">
+             <img src="${dosenData.ttd_url}" width="98" height="95" style="width: 2.6cm; height: 2.51cm;" alt="TTD" />
+           </div>` 
+        : "";
 
+      return `
+      <tr>
+          <td style="border: 1px solid black; padding: 8px; vertical-align: top; text-align: center;">${no}.</td>
+          <td style="border: 1px solid black; padding: 8px; vertical-align: top;">
+              ${labelTitle}<br/>
+              <strong>${dosenData.nama_dosen}</strong><br/><br/>
+              ${formatText(dosenData.catatan_revisi)}
+          </td>
+          <td style="border: 1px solid black; padding: 8px; vertical-align: top;">
+              <br/><br/>
+              ${formatText(dosenData.jawaban_revisi)}
+          </td>
+          <td style="border: 1px solid black; padding: 8px; vertical-align: middle; text-align: center; width: 15%;">
+              ${ttdHtml}
+          </td>
+      </tr>
+      `;
+    };
 
-  const { data: kaprodi } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('role', 'kaprodi')
-        .maybeSingle();
+    const html = `
+    <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+    <head><meta charset='utf-8'><title>Matriks Perbaikan Lengkap</title></head>
+    <body>
+      <div style="text-align: center; font-weight: bold; font-family: 'Times New Roman', Times, serif; line-height: 1.5; font-size: 14pt;">
+        MATRIKS PERBAIKAN SKRIPSI<br>
+        PROGRAM STUDI TEKNIK INFORMATIKA<br>
+        FAKULTAS MATEMATIKA DAN ILMU PENGETAHUAN ALAM<br>
+        UNIVERSITAS PADJADJARAN
+      </div>
+      <br><br>
+      <table style="font-family: 'Times New Roman', Times, serif; border: none; width: 100%; font-size: 12pt;">
+        <tr><td style="width: 20%;">Nama</td><td style="width: 2%;">:</td><td>${mhsName || '..................................................................'}</td></tr>
+        <tr><td>NPM</td><td>:</td><td>${mhsNpm || '..................................................................'}</td></tr>
+        <tr><td>Tanggal Sidang</td><td>:</td><td>${formattedDate}</td></tr>
+        <tr><td>Judul Skripsi</td><td>:</td><td>${proposalData.judul || '..................................................................'}</td></tr>
+        <tr><td>Pembimbing 1</td><td>:</td><td>${d_p1?.nama_dosen || '..................................................................'}</td></tr>
+        <tr><td>Pembimbing 2</td><td>:</td><td>${d_p2?.nama_dosen || '..................................................................'}</td></tr>
+        <tr><td>Penguji 1</td><td>:</td><td>${d_u1?.nama_dosen || '..................................................................'}</td></tr>
+        <tr><td>Penguji 2</td><td>:</td><td>${d_u2?.nama_dosen || '..................................................................'}</td></tr>
+        <tr><td>Penguji 3</td><td>:</td><td>${d_u3?.nama_dosen || '..................................................................'}</td></tr>
+      </table>
+      <br><br>
+      <table style="font-family: 'Times New Roman', Times, serif; border-collapse: collapse; width: 100%; border: 1px solid black; font-size: 12pt;">
+        <thead>
+          <tr>
+            <th style="border: 1px solid black; padding: 8px; width: 5%;">No</th>
+            <th style="border: 1px solid black; padding: 8px; width: 45%;">Uraian masukan pembimbing dan penguji (No Halaman)</th>
+            <th style="border: 1px solid black; padding: 8px; width: 35%;">Uraian Perbaikan yang sudah dilakukan (No Halaman)</th>
+            <th style="border: 1px solid black; padding: 8px; width: 15%;">TTD</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${generateRow(1, 'Pembimbing 1', d_p1)}
+          ${generateRow(2, 'Pembimbing 2', d_p2)}
+          ${generateRow(3, 'Penguji 1', d_u1)}
+          ${generateRow(4, 'Penguji 2', d_u2)}
+          ${generateRow(5, 'Penguji 3', d_u3)}
+        </tbody>
+      </table>
+    </body></html>
+    `;
 
-      if (kaprodi && proposal) {
-        const mhsNama = (proposal.user as any)?.nama || "Seorang mahasiswa";
-        const judulSkripsi = proposal.judul || "Tanpa Judul";
-
-        await sendNotification(
-          kaprodi.id,
-          "Pengajuan Sidang Skripsi",
-          `${mhsNama} telah mengajukan jadwal Sidang Akhir untuk judul: "${judulSkripsi}".`
-        );
-      }
-
-      alert("✅ Sidang berhasil diajukan! Menunggu jadwal Kaprodi.");
-      await fetchAll();
-    } catch (err) {
-      alert("Gagal mengajukan sidang.");
-    } finally {
-      setUploading(false);
-    }
+    const blob = new Blob(['\ufeff', html], { type: 'application/msword' }); 
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Matriks_Perbaikan_FULL_${mhsName?.replace(/\s+/g, '_')}.doc`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
-
-  const bolehAjukanSidang = !!revision && !sidang;
 
   return (
-    <div className="min-h-screen bg-[#F4F7FE] flex font-sans text-slate-700">
+    <div className="flex h-screen bg-[#F4F7FE] font-sans text-slate-700 overflow-hidden">
       <Sidebar />
+      <main className="flex-1 ml-64 flex flex-col h-full overflow-y-auto custom-scrollbar">
+        
+        <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
+          <div className="flex items-center gap-6"></div>
+          <div className="flex items-center gap-6">
+            <NotificationBell />
+            <div className="h-8 w-[1px] bg-slate-200 mx-2" />
+            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">Simpro</span>
+          </div>
+        </header>
 
-      <main className="flex-1 ml-64 flex flex-col h-screen overflow-y-auto">
-        {/* HEADER */}
-         <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
-                   <div className="flex items-center gap-6">
-                     <div className="relative w-72 group">
-                     </div>
-                   </div>
-         
-                 <div className="flex items-center gap-6">
-             {/* KOMPONEN LONCENG BARU */}
-             <NotificationBell />
-             
-             <div className="h-8 w-[1px] bg-slate-200 mx-2" />
-         
-                   <div className="flex items-center gap-6">
-                     {/* Minimalist SIMPRO Text */}
-                     <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
-                       Simpro
-                     </span>
-                   </div>
-                   </div>
-                 </header>
-
-        <div className="p-10 max-w-[1400px] mx-auto w-full">
+        <div className="p-10 max-w-7xl mx-auto w-full">
+          
           <header className="mb-10">
-            <h1 className="text-3xl font-black text-slate-800 tracking-tight">Perbaikan Pasca Seminar</h1>
-            <p className="text-slate-500 font-medium mt-1">Selesaikan revisi seminar hasil untuk melangkah ke tahap Sidang Skripsi Akhir.</p>
+            <h1 className="text-3xl font-black text-slate-800 tracking-tight leading-none uppercase">Perbaikan Pasca Seminar</h1>
+            <p className="text-slate-500 font-medium mt-3 tracking-normal normal-case font-serif">
+              Selesaikan revisi dengan Dewan Penguji untuk melangkah ke tahap Sidang Skripsi Akhir.
+            </p>
           </header>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-            {/* LEFT AREA: UPLOAD & FILE LIST */}
-            <div className="lg:col-span-8 space-y-8">
-              
-              {/* UPLOAD ZONE */}
-              <div 
-                onClick={() => !sidang && fileInputRef.current?.click()}
-                className={`group relative h-[320px] bg-white p-12 rounded-[2.5rem] border-2 border-dashed transition-all flex flex-col items-center justify-center text-center
-                  ${sidang ? 'cursor-not-allowed border-slate-200 bg-slate-50' : 'cursor-pointer border-slate-300 hover:border-blue-400 hover:bg-white hover:shadow-xl hover:shadow-blue-100/50'}`}
-              >
-                <div className={`p-6 rounded-3xl mb-6 shadow-xl transition-all group-hover:scale-110 
-                  ${sidang ? 'bg-slate-100 text-slate-300' : 'bg-blue-600 text-white shadow-blue-200'}`}>
-                  <CloudUpload size={40} />
+          {isLoading && !data ? (
+            <div className="h-96 flex flex-col items-center justify-center bg-white rounded-[2.5rem] border border-white shadow-xl shadow-slate-200/50 animate-pulse">
+              <div className="h-12 w-12 border-4 border-slate-200 border-t-blue-400 rounded-full mb-4 animate-spin" />
+              <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">Menyinkronkan Data...</p>
+            </div>
+          ) : error ? (
+            <div className="h-96 flex items-center justify-center font-black text-red-500 uppercase tracking-widest bg-white rounded-[2.5rem] shadow-xl">
+              Gagal memuat data revisi.
+            </div>
+          ) : !seminarId ? (
+             <div className="flex flex-col items-center justify-center py-20 bg-white rounded-[2.5rem] border border-white shadow-xl shadow-slate-200/50 text-center animate-in fade-in duration-500">
+                <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center text-slate-300 mb-6 shadow-inner">
+                   <AlertCircle size={40} />
                 </div>
-                <h2 className="text-xl font-bold text-slate-800 mb-2">
-                  {sidang ? "Akses Unggah Ditutup" : "Tarik & Lepas file perbaikan di sini"}
-                </h2>
-                <p className="text-slate-400 text-sm mb-8 max-w-xs leading-relaxed">
-                  {sidang ? "Anda tidak dapat mengubah file setelah mengajukan sidang." : "Pastikan dokumen dalam format PDF dan sudah disetujui dosen penguji."}
-                </p>
-                {!sidang && (
-                  <button className="bg-slate-900 text-white px-10 py-3.5 rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg active:scale-95 transition-all">
-                    Pilih Berkas PDF
-                  </button>
-                )}
-              </div>
-
-              <input ref={fileInputRef} type="file" accept="application/pdf" hidden onChange={(e) => e.target.files && handleUpload(e.target.files[0])} />
-
-              {/* UPLOADED FILE STATUS */}
-              {revision && (
-                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-4">
-                  <div className="bg-emerald-50 border border-emerald-100 p-6 rounded-[2rem] flex items-center gap-5 shadow-sm">
-                    <div className="p-3 bg-white rounded-2xl shadow-sm text-emerald-500">
-                      <ShieldCheck size={28} />
+                <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight mb-2">Riwayat Tidak Ditemukan</h3>
+                <p className="text-sm font-bold text-slate-400">Anda belum memiliki riwayat seminar yang valid untuk direvisi.</p>
+             </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-10">
+              
+              {/* 🔥 BANNER DOWNLOAD MATRIKS FULL MUNCUL JIKA SEMUA ACC 🔥 */}
+              {allAcc && (
+                <div className="bg-emerald-500 rounded-[2.5rem] p-8 text-white flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-xl shadow-emerald-200 animate-in fade-in zoom-in duration-700">
+                  <div className="flex items-center gap-6">
+                    <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center shrink-0 border border-white/30">
+                      <FileText size={32} />
                     </div>
                     <div>
-                      <p className="font-black text-emerald-900 uppercase tracking-tight text-sm">Dokumen Terdeteksi</p>
-                      <p className="text-xs text-emerald-700 font-medium opacity-80">Berkas perbaikan Anda sudah tersimpan dengan aman di server.</p>
+                      <h3 className="text-xl font-black uppercase tracking-tight mb-1">Revisi Selesai!</h3>
+                      <p className="text-emerald-100 text-sm font-medium leading-relaxed">
+                        Seluruh dosen telah memberikan ACC. Anda dapat mengunduh dokumen Matriks Perbaikan final yang sudah berisi seluruh catatan, jawaban, dan tanda tangan dosen.
+                      </p>
                     </div>
                   </div>
-
-                  <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-xl shadow-slate-200/50 flex justify-between items-center group">
-                    <div className="flex items-center gap-4 min-w-0">
-                      <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center text-red-500 shrink-0 border border-slate-100 group-hover:scale-110 transition-transform">
-                        <FileText size={24} />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-black text-slate-800 truncate uppercase tracking-tight">{revision.original_name}</p>
-                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Final Draft Perbaikan</p>
-                      </div>
-                    </div>
-
-                    {!sidang && (
-                      <button
-                        onClick={handleDelete}
-                        className="p-3 bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all active:scale-90"
-                      >
-                        <Trash2 size={20} />
-                      </button>
-                    )}
-                  </div>
+                  
+                  <button 
+                    onClick={handleExportFullMatriks}
+                    className="shrink-0 px-8 py-4 bg-white text-emerald-600 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all flex items-center gap-3 active:scale-95"
+                  >
+                    <Download size={18} /> Unduh Matriks Final
+                  </button>
                 </div>
               )}
-            </div>
 
-            {/* RIGHT AREA: DETAILS & ACTIONS */}
-            <div className="lg:col-span-4 space-y-8">
-              <section className="bg-white p-8 rounded-[2.5rem] border border-white shadow-xl shadow-slate-200/50 relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
-                  <Info size={80} />
-                </div>
-                <h2 className="text-lg font-black text-slate-800 mb-8 flex items-center gap-3 uppercase tracking-tighter">
-                  <Info size={20} className="text-blue-600" /> Detail Arsip
-                </h2>
-                <div className="space-y-6">
-                  <DetailItem label="Nama Berkas" value={revision?.original_name || "-"} />
-                  <DetailItem label="Waktu Unggah" value={formatTanggal(revision?.created_at)} />
-                  <div className="h-px bg-slate-50 my-2" />
-                  <div className="flex flex-col gap-2">
-                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Status Kelengkapan</p>
-                     <span className={`inline-flex px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider w-fit
-                        ${revision ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"}`}>
-                        {revision ? "Siap Diajukan" : "Menunggu Berkas"}
-                     </span>
+              {/* ================= SECTION: STATUS REVISI PENGUJI ================= */}
+              <div className="bg-white p-10 rounded-[2.5rem] border border-white shadow-xl shadow-slate-200/50 relative overflow-hidden group">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8 relative z-10">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 bg-blue-600 rounded-2xl text-white shadow-lg shadow-blue-200">
+                      <UserCheck size={24} />
+                    </div>
+                    <h2 className="text-2xl font-black uppercase tracking-tighter text-slate-800">Status Revisi Dosen</h2>
                   </div>
+                  <span className={`px-5 py-2 text-[10px] font-black rounded-full border tracking-[0.15em] uppercase shadow-sm transition-colors duration-500 ${allAcc ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-blue-100 text-blue-700 border-blue-200'}`}>
+                    {examiners.filter(e => e.status_revisi === 'diterima').length} DARI {examiners.length} ACC
+                  </span>
                 </div>
-              </section>
+                
+                <div className="grid grid-cols-1 gap-4">
+                  {examiners.map((penguji) => {
+                    const isAcc = penguji.status_revisi === 'diterima';
+                    const isReview = penguji.status_revisi === 'diperiksa';
+                    const isRevisi = penguji.status_revisi === 'revisi';
+                    const isMenunggu = penguji.status_revisi === 'menunggu';
+                    
+                    return (
+                      <div key={penguji.dosen_id} className="bg-slate-50/50 border border-slate-100 p-6 rounded-[2rem] flex flex-col lg:flex-row lg:items-center justify-between gap-6 transition-all hover:bg-white hover:shadow-lg hover:shadow-slate-200/40 hover:border-white">
+                        
+                        <div className="flex items-center gap-5">
+                          <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shrink-0 border-2 overflow-hidden shadow-inner transition-colors duration-500 ${
+                            isAcc ? 'border-emerald-200 bg-emerald-50 text-emerald-500' : 
+                            isRevisi ? 'border-red-200 bg-red-50 text-red-500' :
+                            'border-slate-200 bg-slate-100 text-slate-400'
+                          }`}>
+                            {penguji.avatar_url ? (
+                               <img src={penguji.avatar_url} className="object-cover w-full h-full" alt="Avatar" />
+                            ) : ( <User size={28} /> )}
+                          </div>
+                          <div>
+                            <p className="text-base font-black text-slate-800 uppercase tracking-tight">{penguji.nama_dosen}</p>
+                            <p className="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] mt-1">{formatRole(penguji.role)}</p>
+                          </div>
+                        </div>
 
-              <button
-                disabled={!bolehAjukanSidang || uploading}
-                onClick={handleAjukanSidang}
-                className={`w-full py-5 rounded-[2rem] font-black text-xs uppercase tracking-[0.2em] shadow-xl transition-all active:scale-95 flex items-center justify-center gap-3
-                  ${bolehAjukanSidang
-                    ? "bg-blue-600 text-white shadow-blue-200 hover:bg-blue-700"
-                    : "bg-slate-200 text-slate-400 shadow-none cursor-not-allowed"
-                }`}
-              >
-                {sidang ? <ShieldCheck size={18} /> : <ArrowRight size={18} />}
-                {sidang ? "Sidang Terjadwal" : "Ajukan Sidang Akhir"}
-              </button>
+                        <div className="flex flex-wrap items-center gap-4">
+                          <div className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest border transition-colors duration-500 ${
+                            isAcc ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 
+                            isReview ? 'bg-amber-50 text-amber-600 border-amber-100' : 
+                            isRevisi ? 'bg-red-50 text-red-600 border-red-100' :
+                            'bg-slate-50 text-slate-500 border-slate-200'
+                          }`}>
+                            {isAcc ? <CheckCircle2 size={16} /> : 
+                             isReview ? <Clock size={16} /> : 
+                             isRevisi ? <AlertCircle size={16} /> : 
+                             <MessageSquare size={16} />}
+                             
+                            {isAcc ? 'Revisi Diterima' : 
+                             isReview ? 'Sedang Diperiksa' : 
+                             isRevisi ? 'Perlu Diperbaiki' : 
+                             'Belum Mulai'}
+                          </div>
+                          
+                          {!isMenunggu && (
+                            <button 
+                              onClick={() => router.push(`/mahasiswa/revisiseminar?dosen_id=${penguji.dosen_id}`)}
+                              className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.15em] transition-all shadow-lg flex items-center gap-2 ${
+                                isAcc ? 'bg-slate-100 text-slate-400 hover:bg-slate-200 shadow-none active:scale-95' : 
+                                isRevisi ? 'bg-red-600 text-white hover:bg-red-700 shadow-red-200 active:scale-95' :
+                                'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-200 active:scale-95'
+                              }`}
+                            >
+                              {isAcc ? 'Lihat Riwayat' : isRevisi ? 'Perbaiki Sekarang' : 'Lihat Progres'}
+                              <ChevronRight size={14} />
+                            </button>
+                          )}
+                        </div>
 
-              <div className="p-6 bg-indigo-50 border border-indigo-100 rounded-[2rem] flex gap-4">
-                 <History className="text-indigo-400 shrink-0" size={20} />
-                 <p className="text-[11px] font-medium text-indigo-700 leading-relaxed">
-                   Pastikan semua catatan revisi dari penguji seminar telah diperbaiki sepenuhnya sebelum menekan tombol ajukan.
-                 </p>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
+
             </div>
-          </div>
+          )}
+
         </div>
       </main>
-    </div>
-  );
-}
-
-function DetailItem({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="space-y-1">
-      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">{label}</p>
-      <p className="text-sm font-bold text-slate-700 leading-tight break-all uppercase tracking-tight">{value}</p>
     </div>
   );
 }

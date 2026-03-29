@@ -311,29 +311,8 @@ const formatDateInput = () => {
     }
   };
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-[#F4F7FE] font-sans text-slate-700">
+   <div className="flex-1 flex flex-col font-sans text-slate-700">
       
-      {/* HEADER */}
-      <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
-                <div className="flex items-center gap-6">
-                  <div className="relative w-72 group">
-                  </div>
-                </div>
-      
-              <div className="flex items-center gap-6">
-          {/* KOMPONEN LONCENG BARU */}
-          <NotificationBell />
-          
-          <div className="h-8 w-[1px] bg-slate-200 mx-2" />
-      
-                <div className="flex items-center gap-6">
-                  {/* Minimalist SIMPRO Text */}
-                  <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
-                    Simpro
-                  </span>
-                </div>
-                </div>
-              </header>
 
       {/* MAIN */}
       <main className="flex-1 p-10 max-w-[1400px] mx-auto w-full">
@@ -371,12 +350,34 @@ const formatDateInput = () => {
                 </thead>
 
                 <tbody className="divide-y divide-slate-50">
-                  {loading ? (
-                    <tr>
-                      <td colSpan={3} className="px-8 py-20 text-center text-slate-400 font-bold animate-pulse">
-                        Menghubungkan ke database...
-                      </td>
-                    </tr>
+                {loading ? (
+                    // 🔥 Animasi Skeleton Loader Keren 🔥
+                    <>
+                      {[1, 2, 3].map((item) => (
+                        <tr key={item} className="border-b border-slate-50">
+                          <td className="px-8 py-8">
+                            <div className="flex items-center gap-4 animate-pulse">
+                              {/* Skeleton Avatar */}
+                              <div className="w-10 h-10 rounded-xl bg-slate-200 shrink-0"></div>
+                              <div className="flex flex-col gap-2 w-full">
+                                {/* Skeleton Nama */}
+                                <div className="h-3 w-40 bg-slate-200 rounded-full"></div>
+                                {/* Skeleton NPM */}
+                                <div className="h-2 w-24 bg-slate-100 rounded-full"></div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-8 py-8 text-center">
+                            {/* Skeleton Status Badge */}
+                            <div className="h-7 w-28 bg-slate-200 rounded-full mx-auto animate-pulse"></div>
+                          </td>
+                          <td className="px-8 py-8 text-center">
+                             {/* Skeleton Button Detail */}
+                             <div className="h-9 w-24 bg-slate-200 rounded-xl mx-auto animate-pulse"></div>
+                          </td>
+                        </tr>
+                      ))}
+                    </>
                   ) : students.length === 0 ? (
                     <tr>
                       <td colSpan={3} className="px-8 py-20 text-center text-slate-400 font-bold uppercase tracking-widest">

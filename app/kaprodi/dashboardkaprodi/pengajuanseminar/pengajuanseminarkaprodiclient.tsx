@@ -67,7 +67,7 @@ export default function PengajuanSeminarKaprodiClient() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#F4F7FE] font-sans text-slate-700">
+    <div className="min-h-screen bg-[#F8F9FB] font-sans text-slate-700">
       
       <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
         <div className="flex items-center gap-6">

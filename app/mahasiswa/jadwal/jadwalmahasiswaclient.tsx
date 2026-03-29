@@ -1,100 +1,97 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import useSWR from "swr"; 
 import Sidebar from "@/components/sidebar";
 import NotificationBell from '@/components/notificationBell';
 import { supabase } from "@/lib/supabaseClient";
 import {
   Calendar,
   Clock,
-  FileCheck,
   AlertCircle,
   GraduationCap,
   ClipboardList,
   MapPin,
-  UserCheck,
-  ChevronRight,
   ShieldCheck,
-  Search,
-  Bell,
   Lock
 } from "lucide-react";
 
-export default function JadwalMahasiswaClient() {
-  const [loading, setLoading] = useState(true);
-  const [seminarData, setSeminarData] = useState<any>(null);
-  const [sidangData, setSidangData] = useState<any>(null); // State untuk detail sidang
+// ================= FETCHER SWR =================
+const fetchSchedules = async () => {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error("Not authenticated");
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  const { data: proposal } = await supabase
+    .from("proposals")
+    .select("id")
+    .eq("user_id", session.user.id)
+    .maybeSingle();
 
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
+  if (!proposal) {
+    return { seminarData: null, sidangData: null };
+  }
 
-      const { data: proposal } = await supabase
-        .from("proposals")
-        .select("id")
-        .eq("user_id", session.user.id)
-        .maybeSingle();
+  const [
+    { data: seminar },
+    { data: sidang }
+  ] = await Promise.all([
+    supabase
+      .from("seminar_requests")
+      .select(`
+        id,
+        proposal_id,
+        seminar_schedules (tanggal, jam, ruangan),
+        examiners (role, dosen:profiles(nama))
+      `)
+      .eq("proposal_id", proposal.id)
+      .eq("tipe", "seminar")
+      .maybeSingle(),
+      
+    supabase
+      .from("sidang_requests")
+      .select(`
+        id, 
+        status, 
+        tanggal_sidang, 
+        jam_sidang, 
+        ruangan
+      `)
+      .eq("proposal_id", proposal.id)
+      .maybeSingle()
+  ]);
 
-      if (!proposal) {
-        setSeminarData(null);
-        setSidangData(null);
-        return;
-      }
-
-      // 1. Fetch Data Seminar Hasil
-      const { data: seminar } = await supabase
-        .from("seminar_requests")
-        .select(`
-          id,
-          proposal_id,
-          seminar_schedules (tanggal, jam, ruangan),
-          examiners (role, dosen:profiles(nama))
-        `)
-        .eq("proposal_id", proposal.id)
-        .eq("tipe", "seminar")
-        .maybeSingle();
-
-      setSeminarData(seminar ?? null);
-
-      // 2. Fetch Data Sidang Akhir
-      // Kita ambil detail jadwal dan penguji (jika ada relasi penguji untuk sidang)
-      const { data: sidang } = await supabase
-        .from("sidang_requests")
-        .select(`
-          id, 
-          status, 
-          tanggal_sidang, 
-          jam_sidang, 
-          ruangan
-        `)
-        .eq("proposal_id", proposal.id)
-        .maybeSingle();
-
-      setSidangData(sidang ?? null);
-
-    } catch (err) {
-      console.error("Gagal fetch data:", err);
-    } finally {
-      setLoading(false);
-    }
+  return {
+    seminarData: seminar || null,
+    sidangData: sidang || null
   };
+};
 
-  const hasSeminarSchedule = !!seminarData?.seminar_schedules;
-  const isSidangScheduled = !!sidangData?.tanggal_sidang; // Cek apakah Kaprodi sudah isi jadwal
+export default function JadwalMahasiswaClient() {
+  
+  const { data, error, isLoading } = useSWR('jadwal_mahasiswa_all', fetchSchedules, {
+    revalidateOnFocus: true,
+    refreshInterval: 60000 
+  });
 
-  const formatDate = (date: string) =>
-    new Date(date).toLocaleDateString("id-ID", {
+  const seminarData = data?.seminarData;
+  const sidangData = data?.sidangData;
+
+  // 🔥 PERBAIKAN TYPESCRIPT: Mengeluarkan objek dari dalam Array (Jika dari Supabase berupa Array)
+  const semSchedule = Array.isArray(seminarData?.seminar_schedules) 
+    ? seminarData.seminar_schedules[0] 
+    : seminarData?.seminar_schedules;
+
+  const hasSeminarSchedule = !!semSchedule?.tanggal;
+  const isSidangScheduled = !!sidangData?.tanggal_sidang;
+
+  const formatDate = (date: string) => {
+    if (!date) return "-";
+    return new Date(date).toLocaleDateString("id-ID", {
       weekday: "long",
       year: "numeric",
       month: "long",
       day: "numeric",
     });
+  };
 
   return (
     <div className="flex min-h-screen bg-[#F4F7FE] font-sans text-slate-700">
@@ -102,25 +99,15 @@ export default function JadwalMahasiswaClient() {
 
       <main className="flex-1 ml-64 flex flex-col h-screen overflow-y-auto custom-scrollbar uppercase tracking-tighter">
         <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
-                  <div className="flex items-center gap-6">
-                    <div className="relative w-72 group">
-                    </div>
-                  </div>
-        
-                <div className="flex items-center gap-6">
-            {/* KOMPONEN LONCENG BARU */}
+          <div className="flex items-center gap-6"><div className="relative w-72 group"></div></div>
+          <div className="flex items-center gap-6">
             <NotificationBell />
-            
             <div className="h-8 w-[1px] bg-slate-200 mx-2" />
-        
-                  <div className="flex items-center gap-6">
-                    {/* Minimalist SIMPRO Text */}
-                    <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
-                      Simpro
-                    </span>
-                  </div>
-                  </div>
-                </header>
+            <div className="flex items-center gap-6">
+              <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">Simpro</span>
+            </div>
+          </div>
+        </header>
 
         <div className="p-10 max-w-7xl mx-auto w-full">
           <header className="mb-10">
@@ -128,11 +115,13 @@ export default function JadwalMahasiswaClient() {
             <p className="text-slate-500 font-medium mt-3 tracking-normal normal-case font-serif">Status penjadwalan akademik Anda secara real-time.</p>
           </header>
 
-          {loading ? (
-            <div className="h-96 flex flex-col items-center justify-center bg-white rounded-[2.5rem] border shadow-xl shadow-slate-200/50">
-              <div className="animate-spin h-12 w-12 border-4 border-blue-600 border-t-transparent rounded-full mb-4" />
-              <p className="text-slate-400 font-bold animate-pulse">Sinkronisasi Data...</p>
+          {isLoading && !data ? (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 animate-pulse">
+              <div className="lg:col-span-7 bg-slate-200 h-64 rounded-[2.5rem]"></div>
+              <div className="lg:col-span-5 bg-slate-200 h-64 rounded-[2.5rem]"></div>
             </div>
+          ) : error ? (
+             <div className="p-10 text-center font-black text-red-500 uppercase tracking-widest">Gagal memuat data jadwal.</div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
 
@@ -148,11 +137,12 @@ export default function JadwalMahasiswaClient() {
                   </div>
 
                   {hasSeminarSchedule ? (
-                    <div className="grid md:grid-cols-1 gap-6 relative z-10">
+                    <div className="grid md:grid-cols-1 gap-6 relative z-10 animate-in fade-in duration-500">
                       <div className="flex flex-wrap gap-4">
-                        <ScheduleInfo icon={<Calendar size={18}/>} label="Tanggal" value={formatDate(seminarData.seminar_schedules.tanggal)} />
-                        <ScheduleInfo icon={<Clock size={18}/>} label="Waktu" value={`${seminarData.seminar_schedules.jam.slice(0,5)} WIB`} />
-                        <ScheduleInfo icon={<MapPin size={18}/>} label="Ruangan" value={seminarData.seminar_schedules.ruangan} />
+                        {/* 🔥 Menggunakan semSchedule yang sudah dibersihkan */}
+                        <ScheduleInfo icon={<Calendar size={18}/>} label="Tanggal" value={formatDate(semSchedule?.tanggal)} />
+                        <ScheduleInfo icon={<Clock size={18}/>} label="Waktu" value={`${semSchedule?.jam?.slice(0,5)} WIB`} />
+                        <ScheduleInfo icon={<MapPin size={18}/>} label="Ruangan" value={semSchedule?.ruangan} />
                       </div>
                     </div>
                   ) : (
@@ -183,15 +173,15 @@ export default function JadwalMahasiswaClient() {
                           <div className="space-y-4 font-bold text-slate-700">
                              <div className="flex items-center gap-3">
                                 <Calendar size={16} className="text-indigo-600" />
-                                <span className="text-sm">{formatDate(sidangData.tanggal_sidang)}</span>
+                                <span className="text-sm">{formatDate(sidangData?.tanggal_sidang)}</span>
                              </div>
                              <div className="flex items-center gap-3">
                                 <Clock size={16} className="text-indigo-600" />
-                                <span className="text-sm">{sidangData.jam_sidang.slice(0,5)} WIB</span>
+                                <span className="text-sm">{sidangData?.jam_sidang?.slice(0,5)} WIB</span>
                              </div>
                              <div className="flex items-center gap-3">
                                 <MapPin size={16} className="text-indigo-600" />
-                                <span className="text-sm">Ruangan {sidangData.ruangan}</span>
+                                <span className="text-sm">Ruangan {sidangData?.ruangan}</span>
                              </div>
                           </div>
                        </div>

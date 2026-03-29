@@ -15,6 +15,8 @@ import {
   LogOut,
   PieChart,
   Megaphone,
+  CalendarCheck,
+  Scale, // 🔥 Tambahan Icon Scale untuk Monitoring Penguji
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
@@ -31,10 +33,13 @@ export default function SidebarKaprodi() {
     { icon: Users, label: "Mahasiswa Bimbingan", href: "/kaprodi/dashboardkaprodi/mahasiswabimbingan" },
     { icon: FolderOpen, label: "Akses Proposal", href: "/kaprodi/dashboardkaprodi/aksesproposal" },
     { icon: PieChart, label: "Monitoring Bursa", href: "/kaprodi/dashboardkaprodi/manajemenbursa" },
+    { icon: Scale, label: "Monitoring Penguji", href: "/kaprodi/dashboardkaprodi/monitoringpenguji" }, // 🔥 Menu Tambahan Baru
     { icon: BarChart2, label: "Progres Semua Mahasiswa", href: "/kaprodi/dashboardkaprodi/progressemuamahasiswa" },
     { icon: FileCheck, label: "Pengajuan Seminar", href: "/kaprodi/dashboardkaprodi/pengajuanseminar" },
     { icon: FileText, label: "Pengajuan Sidang", href: "/kaprodi/dashboardkaprodi/pengajuansidang" },
     { icon: Megaphone, label: "Pengumuman", href: "/kaprodi/dashboardkaprodi/pengumuman" },
+    { icon: CalendarCheck, label: "Jadwal Penguji Seminar", href: "/kaprodi/dashboardkaprodi/jadwalpengujiseminar" },
+    { icon: FileCheck, label: "Perbaikan Seminar", href: "/kaprodi/dashboardkaprodi/perbaikanseminar" }, 
   ];
 
   // ================= FETCH PROFILE =================
@@ -73,27 +78,28 @@ export default function SidebarKaprodi() {
   return (
     <aside className="w-64 bg-white border-r border-gray-200 flex flex-col fixed h-full z-30">
       {/* ================= USER PROFILE ================= */}
-      <div className="p-6 flex items-center gap-3 border-b border-gray-50">
-        {/* 🔥 Ganti kotak inisial dengan logika Avatar/Inisial */}
-        <div className="w-10 h-10 bg-[#2b5a9e] rounded-full flex items-center justify-center text-white font-bold text-lg relative overflow-hidden shrink-0">
-          {avatarUrl ? (
-            <Image 
-              src={avatarUrl} 
-              alt="Profile" 
-              layout="fill" 
-              objectFit="cover" 
-            />
-          ) : (
-            nama ? nama.charAt(0).toUpperCase() : "K"
-          )}
-        </div>
-        <div className="min-w-0"> {/* Tambahan min-w-0 agar text truncate jalan kalau nama kepanjangan */}
-          <p className="text-sm font-bold text-[#1e3a8a] leading-none truncate">
-            {nama || "Kaprodi"}
-          </p>
-          <p className="text-[10px] text-blue-400 mt-1 uppercase font-semibold tracking-widest">
-            Kaprodi
-          </p>
+      <div className="p-6 pb-2">
+        <div className="flex items-center gap-3 mb-8">
+          <div className="w-10 h-10 rounded-full bg-[#2B5F9E] flex items-center justify-center text-white font-bold text-lg relative overflow-hidden shrink-0 shadow-inner">
+            {avatarUrl ? (
+              <Image 
+                src={avatarUrl} 
+                alt="Profile" 
+                layout="fill" 
+                objectFit="cover" 
+              />
+            ) : (
+              nama ? nama.charAt(0).toUpperCase() : "K"
+            )}
+          </div>
+          <div className="min-w-0">
+            <h3 className="text-sm font-bold text-gray-900 truncate">
+              {nama || "Kaprodi"}
+            </h3>
+            <p className="text-xs text-blue-600 font-medium capitalize">
+              Kaprodi
+            </p>
+          </div>
         </div>
       </div>
 

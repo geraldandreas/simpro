@@ -167,7 +167,7 @@ export default function ProgresSemuaMahasiswaKaprodiClient() {
   };
 
   return (
-    <div className="flex flex-col w-full h-full bg-[#F4F7FE] font-sans text-slate-700">
+    <div className="flex flex-col w-full h-full bg-[#F8F9FB] font-sans text-slate-700">
       
       {/* --- HEADER - Glassmorphism --- */}
      <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
