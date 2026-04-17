@@ -4,10 +4,11 @@ import React, { useEffect, useState, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { sendNotification } from "@/lib/notificationUtils";
 import { supabase } from "@/lib/supabaseClient";
+import Image from "next/image";
 import { 
   ArrowLeft, Download, FileText, UploadCloud, 
-  Save, User, AlertCircle, CheckCircle 
-} from "lucide-react";
+  Save, User, AlertCircle, CheckCircle, Lock 
+} from "lucide-react"; // 🔥 Tambahkan Lock disini
 
 // --- TYPES ---
 interface SessionFeedback {
@@ -39,6 +40,7 @@ interface SessionDetail {
     mahasiswa: {
       nama: string;
       npm: string;
+      avatar_url?: string | null;
     };
   };
   dosen: {
@@ -52,7 +54,7 @@ interface SessionDetail {
   }[];
 }
 
-export default function SesiBimbinganDosenClient() {
+export default function SesiBimbinganKaprodiClient() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const sessionId = searchParams.get("id");
@@ -92,31 +94,20 @@ export default function SesiBimbinganDosenClient() {
       setLoading(true);
       
       // 1. Fetch Session Data
-      
       const { data: sessionData, error } = await supabase
-  .from("guidance_sessions")
-  .select(`
-    *,
-    proposal:proposals (
-      id,
-      judul,
-      mahasiswa:profiles (
-        nama,
-        npm
-      )
-    ),
-    dosen:profiles!guidance_sessions_dosen_id_fkey (
-      nama
-    ),
-    drafts:session_drafts (
-      id,
-      file_url,
-      uploaded_at,
-      catatan
-    )
-  `)
-  .eq("id", sessionId)
-  .single();
+        .from("guidance_sessions")
+        .select(`
+          *,
+          proposal:proposals (
+            id,
+            judul,
+            mahasiswa:profiles (nama, npm, avatar_url)
+          ),
+          dosen:profiles!guidance_sessions_dosen_id_fkey (nama),
+          drafts:session_drafts (id, file_url, uploaded_at, catatan)
+        `)
+        .eq("id", sessionId)
+        .single();
 
       if (error) throw error;
 
@@ -125,78 +116,69 @@ export default function SesiBimbinganDosenClient() {
       setStatusSesi(sessionData.status);
 
       // ================= HITUNG BIMBINGAN VALID =================
-const { data: allSessions } = await supabase
-  .from("guidance_sessions")
-  .select(`
-    id,
-    kehadiran_mahasiswa,
-    session_feedbacks (
-      status_revisi,
-      created_at
-    )
-  `)
-  .eq("proposal_id", sessionData.proposal.id)
-  .eq("dosen_id", sessionData.dosen_id);
+      const { data: allSessions } = await supabase
+        .from("guidance_sessions")
+        .select(`id, kehadiran_mahasiswa, session_feedbacks (status_revisi, created_at)`)
+        .eq("proposal_id", sessionData.proposal.id)
+        .eq("dosen_id", sessionData.dosen_id);
 
-// ambil feedback TERAKHIR tiap sesi
-const validCount =
-  allSessions?.filter(s => {
-    const latest = s.session_feedbacks?.sort(
-      (a: any, b: any) =>
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    )[0];
+      const validCount = allSessions?.filter(s => {
+        const latest = s.session_feedbacks?.sort((a: any, b: any) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        )[0];
+        // 🔥 LOGIKA BARU: Dihitung valid JIKA HADIR dan SUDAH DIBERIKAN FEEDBACK (baik disetujui maupun revisi)
+        return s.kehadiran_mahasiswa === "hadir" && 
+               (latest?.status_revisi === "disetujui" || latest?.status_revisi === "revisi");
+      }).length || 0;
 
-    return (
-      s.kehadiran_mahasiswa === "hadir" &&
-      latest?.status_revisi === "disetujui"
-    );
-  }).length || 0;
-
-setValidGuidanceCount(validCount);
-// ==========================================================
-
+      setValidGuidanceCount(validCount);
 
       // 3️⃣ Fetch feedback dosen
-const { data: feedbackData, error: feedbackError } = await supabase
-  .from("session_feedbacks")
-  .select(`
-    id,
-    komentar,
-    file_url,
-    status_revisi,
-    created_at,
-    dosen:profiles (
-      id,
-      nama
-    )
-  `)
-  .eq("session_id", sessionId)
-  .order("created_at", { ascending: false });
+      const { data: feedbackData, error: feedbackError } = await supabase
+        .from("session_feedbacks")
+        .select(`id, komentar, file_url, status_revisi, created_at, dosen:profiles (id, nama)`)
+        .eq("session_id", sessionId)
+        .order("created_at", { ascending: false });
 
-if (feedbackError) throw feedbackError;
+      if (feedbackError) throw feedbackError;
 
-   const latestFeedback = feedbackData?.[0] ?? null;
- 
+      const latestFeedback = feedbackData?.[0] ?? null;
+      setFeedbackId(latestFeedback?.id ?? null);
+      setKomentar(latestFeedback?.komentar ?? "");
+      setStatusRevisi(latestFeedback?.status_revisi ?? null);
+      setExistingFileUrl(latestFeedback?.file_url ?? null);
 
-setFeedbackId(latestFeedback?.id ?? null);
-setKomentar(latestFeedback?.komentar ?? "");
-setStatusRevisi(latestFeedback?.status_revisi ?? null);
-setExistingFileUrl(latestFeedback?.file_url ?? null);
-
-
-
-
-      // 2. Check Seminar Status (Is already approved?)
+      // 🔥 2. Check Seminar Status (PERBAIKAN LOGIKA LOCK) 🔥
       if (sessionData.proposal?.id) {
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        // Ambil role dosen saat ini
+        const { data: supervisor } = await supabase
+          .from("thesis_supervisors")
+          .select("role")
+          .eq("proposal_id", sessionData.proposal.id)
+          .eq("dosen_id", user?.id)
+          .single();
+
         const { data: seminarReq } = await supabase
           .from('seminar_requests')
-          .select('status')
+          .select('status, approved_by_p1, approved_by_p2')
           .eq('proposal_id', sessionData.proposal.id)
-          .eq('status', 'Disetujui') 
           .maybeSingle();
         
-        if (seminarReq) setIsSeminarApproved(true);
-        
+        if (seminarReq && supervisor) {
+          const role = supervisor.role;
+          const isP1 = role === "utama" || role === "pembimbing1";
+          
+          // Kunci layar jika Kaprodi sudah setuju, ATAU jika Dosen INI sudah memberikan ACC
+          if (
+            seminarReq.status === 'Disetujui' || 
+            (isP1 && seminarReq.approved_by_p1) || 
+            (!isP1 && seminarReq.approved_by_p2)
+          ) {
+            setIsSeminarApproved(true);
+          }
+        }
       }
 
     } catch (err) {
@@ -205,7 +187,6 @@ setExistingFileUrl(latestFeedback?.file_url ?? null);
       setLoading(false);
     }
   };
-
   
 
 
@@ -358,103 +339,140 @@ const handleSave = async () => {
 
 
  const handleAccSeminar = async () => {
-  if (!session?.proposal?.id) return;
+    if (!session?.proposal?.id) return;
 
-  if (!confirm("Apakah Anda yakin ingin meng-ACC mahasiswa ini untuk Seminar?"))
-    return;
+    if (!confirm("Apakah Anda yakin ingin meng-ACC mahasiswa ini untuk Seminar?"))
+      return;
 
-  try {
-    setSaving(true);
+    try {
+      setSaving(true);
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error("User tidak login");
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("User tidak login");
 
-    // 1️⃣ Cek role dosen
-    const { data: supervisor } = await supabase
-      .from("thesis_supervisors")
-      .select("role")
-      .eq("proposal_id", session.proposal.id)
-      .eq("dosen_id", user.id)
-      .single();
-
-    if (!supervisor) {
-      throw new Error("Anda bukan pembimbing mahasiswa ini");
-    }
-
-    const role = supervisor.role;
-
-    // 2️⃣ Cek seminar request
-    const { data: existing } = await supabase
-      .from("seminar_requests")
-      .select("id")
-      .eq("proposal_id", session.proposal.id)
-      .maybeSingle();
-
-    let seminarRequestId: string;
-
-    // 3️⃣ INSERT JIKA BELUM ADA
-    if (!existing) {
-      const { data: inserted, error } = await supabase
-        .from("seminar_requests")
-        .insert({
-          proposal_id: session.proposal.id,
-          tipe: "seminar",
-          status: "draft",
-          approved_by_p1: role === "utama" || role === "pembimbing1",
-          approved_by_p2: role === "pendamping",
-        })
-        .select("id")
+      // 1️⃣ Cek role dosen
+      const { data: supervisor } = await supabase
+        .from("thesis_supervisors")
+        .select("role")
+        .eq("proposal_id", session.proposal.id)
+        .eq("dosen_id", user.id)
         .single();
 
-      if (error) throw error;
-      seminarRequestId = inserted.id;
+      if (!supervisor) throw new Error("Anda bukan pembimbing mahasiswa ini");
+      const role = supervisor.role;
 
-    } else {
-      seminarRequestId = existing.id;
-
-      const { error } = await supabase
+      // 2️⃣ Cek seminar request
+      const { data: existing } = await supabase
         .from("seminar_requests")
-        .update(
-          role === "utama" || role === "pembimbing1"
-            ? { approved_by_p1: true }
-            : { approved_by_p2: true }
-        )
-        .eq("id", seminarRequestId);
+        .select("id")
+        .eq("proposal_id", session.proposal.id)
+        .maybeSingle();
 
-      if (error) throw error;
+      let seminarRequestId: string;
+
+      // 3️⃣ INSERT ATAU UPDATE
+      if (!existing) {
+        const { data: inserted, error } = await supabase
+          .from("seminar_requests")
+          .insert({
+            proposal_id: session.proposal.id,
+            tipe: "seminar",
+            status: "draft",
+            approved_by_p1: role === "utama" || role === "pembimbing1",
+            approved_by_p2: role === "pendamping",
+          })
+          .select("id")
+          .single();
+
+        if (error) throw error;
+        seminarRequestId = inserted.id;
+
+      } else {
+        seminarRequestId = existing.id;
+        const { error } = await supabase
+          .from("seminar_requests")
+          .update(
+            role === "utama" || role === "pembimbing1"
+              ? { approved_by_p1: true }
+              : { approved_by_p2: true }
+          )
+          .eq("id", seminarRequestId);
+
+        if (error) throw error;
+      }
+
+      alert("✅ ACC Seminar berhasil dicatat");
+      
+      // 🔥 PERBAIKAN: Langsung ubah state agar layar TERKUNCI seketika 🔥
+      setIsSeminarApproved(true);
+
+      // Kirim Notifikasi
+      const { data: student } = await supabase
+        .from("proposals")
+        .select("user_id")
+        .eq("id", session.proposal.id)
+        .single();
+
+      if (student?.user_id) {
+        await sendNotification(
+          student.user_id,
+          "ACC Seminar",
+          `Dosen ${session.dosen.nama} telah memberikan ACC Seminar kepada Anda.`
+        );
+      }
+
+    } catch (err: any) {
+      console.error(err);
+      alert("❌ Gagal ACC Seminar: " + err.message);
+    } finally {
+      setSaving(false);
     }
-
-    alert("✅ ACC Seminar berhasil dicatat");
-
-    const { data: student } = await supabase
-  .from("proposals")
-  .select("user_id")
-  .eq("id", session.proposal.id)
-  .single();
-
-if (student?.user_id) {
-  await sendNotification(
-    student.user_id,
-    "ACC Seminar",
-    `Dosen ${session.dosen.nama} telah memberikan ACC Seminar kepada Anda.`
-  );
-}
+  };
 
 
-  } catch (err: any) {
-    console.error(err);
-    alert("❌ Gagal ACC Seminar: " + err.message);
-  } finally {
-    setSaving(false);
+
+
+ if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-[#F8F9FB] z-50">
+        {/* Spinner Elegan */}
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600"></div>
+      </div>
+    );
   }
-};
 
+  if (!session) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center bg-[#F8F9FB]">
+        <div className="flex flex-col items-center text-center">
+          <div className="w-24 h-24 bg-slate-100 border-2 border-dashed border-slate-200 rounded-[2rem] flex items-center justify-center text-slate-300 mb-6 shadow-inner relative overflow-hidden">
+            <AlertCircle size={32} className="relative z-10" />
+            <div className="absolute w-full h-full bg-gradient-to-tr from-transparent to-slate-50 opacity-50"></div>
+          </div>
+          <h2 className="text-lg font-black text-slate-700 uppercase tracking-widest mb-2">Sesi Tidak Ditemukan</h2>
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest text-center max-w-xs mb-8">
+            Data sesi bimbingan yang Anda cari tidak ada di sistem atau akses ditolak.
+          </p>
+          
+          <button 
+            onClick={() => router.back()}
+            className="group flex items-center gap-4 transition-all active:scale-95"
+          >
+            {/* Kotak Putih Arrow */}
+            <div className="w-12 h-12 bg-white border border-slate-200 rounded-2xl flex items-center justify-center text-slate-500 group-hover:text-blue-600 group-hover:border-blue-200 group-hover:bg-blue-50 group-hover:shadow-md transition-all shadow-sm shrink-0">
+              <ArrowLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
+            </div>
+            
+            {/* Teks Label */}
+            <span className="text-[11px] font-black text-slate-500 uppercase tracking-[0.15em] group-hover:text-blue-600 transition-colors">
+              Kembali ke Detail Bimbingan Mahasiswa
+            </span>
+          </button>
+        </div>
+      </div>
+    );
+  }
 
-
-
-
-  if (loading) return <div className="flex h-screen items-center justify-center text-gray-400">Memuat sesi...</div>;
-  if (!session) return <div className="flex h-screen items-center justify-center text-gray-400">Sesi tidak ditemukan.</div>;
   const draft = session.drafts?.[0] ?? null;
 
   return (
@@ -464,12 +482,25 @@ if (student?.user_id) {
       <main className="flex-1 p-8 flex flex-col h-screen overflow-y-auto">
         
         {/* Header Nav */}
-        <div className="mb-6">
-          <button onClick={() => router.back()} className="flex items-center gap-2 text-gray-500 hover:text-gray-700 mb-2 transition">
-            <ArrowLeft size={18} />
-            <span className="text-sm font-bold">Kembali</span>
+        <div className="mb-10">
+          <button 
+            onClick={() => router.back()}
+            className="group flex items-center gap-4 mb-8 w-fit transition-all active:scale-95"
+          >
+            {/* Kotak Putih Arrow */}
+            <div className="w-12 h-12 bg-white border border-slate-200 rounded-2xl flex items-center justify-center text-slate-500 group-hover:text-blue-600 group-hover:border-blue-200 group-hover:bg-blue-50 group-hover:shadow-md transition-all shadow-sm shrink-0">
+              <ArrowLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
+            </div>
+            
+            {/* Teks Label */}
+            <span className="text-[11px] font-black text-slate-500 uppercase tracking-[0.15em] group-hover:text-blue-600 transition-colors">
+              Kembali ke Detail Bimbingan Mahasiswa
+            </span>
           </button>
-          <h1 className="text-2xl font-bold text-gray-900">Sesi Bimbingan {session.sesi_ke}</h1>
+
+          <h1 className="text-3xl font-black text-slate-800 tracking-tight leading-none">
+            Sesi Bimbingan {session.sesi_ke}
+          </h1>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -479,14 +510,27 @@ if (student?.user_id) {
             
             {/* Card Info Mahasiswa */}
             <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm flex items-start gap-5">
-              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold text-2xl shrink-0">
-                {session.proposal.mahasiswa.nama.charAt(0)}
+              
+              {/* 🔥 PERBAIKAN: Render Avatar Mahasiswa */}
+              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold text-2xl shrink-0 overflow-hidden relative border border-blue-200 shadow-inner">
+                {session.proposal.mahasiswa.avatar_url ? (
+                  <Image 
+                    src={session.proposal.mahasiswa.avatar_url} 
+                    alt={session.proposal.mahasiswa.nama || "User"} 
+                    fill 
+                    className="object-cover" 
+                  />
+                ) : (
+                  session.proposal.mahasiswa.nama.charAt(0).toUpperCase()
+                )}
               </div>
+              {/* ------------------------------------ */}
+
               <div className="flex-1">
                 <h2 className="text-lg font-bold text-gray-900">{session.proposal.mahasiswa.nama}</h2>
                 <p className="text-sm text-gray-500 font-medium mb-2">{session.proposal.mahasiswa.npm}</p>
                 <p className="text-sm text-gray-800 font-medium leading-relaxed bg-gray-50 p-3 rounded-lg border border-gray-100">
-                  {session.proposal.judul}
+                  "{session.proposal.judul}"
                 </p>
                 
                 <div className="mt-4 flex gap-6 text-xs text-gray-500 font-medium">
@@ -499,74 +543,82 @@ if (student?.user_id) {
             </div>
 
             {/* Card Dokumen & Catatan Mahasiswa */}
-            <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+            <div className={`bg-white rounded-2xl border border-gray-200 p-6 shadow-sm transition-all ${isSeminarApproved ? 'grayscale-[0.2]' : ''}`}>
               <h3 className="text-lg font-bold text-gray-900 mb-4">Dokumen Mahasiswa</h3>
               
               {draft ? (
-  <div className="flex items-center justify-between bg-white border border-gray-200 p-4 rounded-xl mb-6 shadow-sm">
-    <div className="flex items-center gap-4">
-      <div className="p-3 bg-blue-50 rounded-lg text-blue-600">
-        <FileText size={24} />
-      </div>
-      <div>
-        <p className="text-sm font-bold text-gray-800">
-          {draft.file_url.split("/").pop()}
-        </p>
-        <p className="text-xs text-gray-400 mt-0.5">
-          Diunggah:{" "}
-          {new Date(draft.uploaded_at).toLocaleDateString("id-ID")}
-        </p>
-      </div>
-    </div>
-     <button
-  onClick={() => handleDownloadDraft(draft.file_url)}
-  className="bg-[#365b8e] hover:bg-[#2a466f] text-white px-5 py-2.5 rounded-lg text-xs font-bold transition shadow-sm flex items-center gap-2"
->
-  <Download size={16} /> Unduh
-</button>
+                <div className="flex items-center justify-between bg-white border border-gray-200 p-4 rounded-xl mb-6 shadow-sm">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 bg-blue-50 rounded-lg text-blue-600">
+                      <FileText size={24} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-gray-800">
+                        {decodeURIComponent(draft.file_url.split("/").pop() || "").replace(/%20/g, " ")}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        Diunggah:{" "}
+                        {new Date(draft.uploaded_at).toLocaleDateString("id-ID")}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleDownloadDraft(draft.file_url)}
+                    className="bg-[#365b8e] hover:bg-[#2a466f] text-white px-5 py-2.5 rounded-lg text-xs font-bold transition shadow-sm flex items-center gap-2"
+                  >
+                    <Download size={16} /> Unduh
+                  </button>
 
-  </div>
-) : (
-  <div className="flex flex-col items-center justify-center p-8 bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl mb-6 text-gray-400">
-    <AlertCircle size={24} className="mb-2 opacity-50" />
-    <p className="text-sm font-medium">
-      Mahasiswa belum mengunggah dokumen draft.
-    </p>
-  </div>
-)}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center p-8 bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl mb-6 text-gray-400">
+                  <AlertCircle size={24} className="mb-2 opacity-50" />
+                  <p className="text-sm font-medium">
+                    Mahasiswa belum mengunggah dokumen draft.
+                  </p>
+                </div>
+              )}
 
 
               <div className="mb-6">
                 <label className="text-sm font-bold text-gray-700 block mb-2">Catatan dari Mahasiswa</label>
                 <div className="w-full bg-gray-50 border border-gray-200 rounded-xl p-4 text-sm text-gray-600 min-h-[80px]">
                   {session.drafts?.[0]?.catatan || "-"}
-                 
                 </div>
               </div>
 
+              {/* 🔥 KEPUTUSAN SESI: DI-LOCK JIKA SEMINAR ACC 🔥 */}
               <div className="border-t border-gray-100 pt-6">
                 <p className="text-sm font-bold text-gray-900 mb-3">Keputusan Sesi Ini</p>
                 <div className="flex items-center gap-6">
-                  <label className={`flex items-center gap-3 cursor-pointer p-3 rounded-lg border transition-all ${statusSesi === 'selesai' ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200 hover:bg-gray-50'}`}>
+                  <label className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${
+                    isSeminarApproved ? 'opacity-60 cursor-not-allowed bg-gray-50 border-gray-200' :
+                    statusSesi === 'selesai' ? 'bg-green-50 border-green-200 cursor-pointer' : 'bg-white border-gray-200 hover:bg-gray-50 cursor-pointer'
+                  }`}>
                     <input 
                       type="radio" 
                       name="status" 
+                      disabled={isSeminarApproved}
                       checked={statusRevisi === 'disetujui'}
                       onChange={() => setStatusRevisi('disetujui')}
-                      className="w-4 h-4 text-green-600 focus:ring-green-500 border-gray-300"
+                      className="w-4 h-4 text-green-600 focus:ring-green-500 border-gray-300 disabled:cursor-not-allowed"
                     />
                     <span className={`text-sm font-bold ${statusRevisi === 'disetujui' ? 'text-green-700' : 'text-gray-600'}`}>
                       ACC Draft
                     </span>
                   </label>
 
-                  <label className={`flex items-center gap-3 cursor-pointer p-3 rounded-lg border transition-all ${statusRevisi === 'revisi' ? 'bg-orange-50 border-orange-200' : 'bg-white border-gray-200 hover:bg-gray-50'}`}>
+                  <label className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${
+                    isSeminarApproved ? 'opacity-60 cursor-not-allowed bg-gray-50 border-gray-200' :
+                    statusRevisi === 'revisi' ? 'bg-orange-50 border-orange-200 cursor-pointer' : 'bg-white border-gray-200 hover:bg-gray-50 cursor-pointer'
+                  }`}>
                     <input 
                       type="radio" 
                       name="status" 
+                      disabled={isSeminarApproved}
                       checked={statusRevisi === 'revisi'}
                       onChange={() => setStatusRevisi('revisi')}
-                      className="w-4 h-4 text-orange-500 focus:ring-orange-400 border-gray-300"
+                      className="w-4 h-4 text-orange-500 focus:ring-orange-400 border-gray-300 disabled:cursor-not-allowed"
                     />
                     <span className={`text-sm font-bold ${statusRevisi === 'perlu_revisi' ? 'text-orange-700' : 'text-gray-600'}`}>
                       Perlu Revisi
@@ -575,18 +627,25 @@ if (student?.user_id) {
                 </div>
               </div>
 
+              {/* 🔥 KEHADIRAN MAHASISWA: DI-LOCK JIKA SEMINAR ACC 🔥 */}
               <div className="mt-6 pt-6 border-t border-gray-100">
                 <p className="text-sm font-bold text-gray-900 mb-3">Kehadiran Mahasiswa</p>
                 <div className="flex gap-3">
                   <button 
+                    disabled={isSeminarApproved}
                     onClick={() => setKehadiran('hadir')}
-                    className={`px-5 py-2.5 rounded-lg text-xs font-bold border transition ${kehadiran === 'hadir' ? 'bg-[#588d7f] text-white border-[#588d7f] shadow-md' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}
+                    className={`px-5 py-2.5 rounded-lg text-xs font-bold border transition ${
+                      isSeminarApproved ? 'opacity-60 cursor-not-allowed' : ''
+                    } ${kehadiran === 'hadir' ? 'bg-[#588d7f] text-white border-[#588d7f] shadow-md' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}
                   >
                     Hadir
                   </button>
                   <button 
+                    disabled={isSeminarApproved}
                     onClick={() => setKehadiran('tidak_hadir')}
-                    className={`px-5 py-2.5 rounded-lg text-xs font-bold border transition ${kehadiran === 'tidak_hadir' ? 'bg-yellow-100 border-yellow-300 text-yellow-800 shadow-md' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}
+                    className={`px-5 py-2.5 rounded-lg text-xs font-bold border transition ${
+                      isSeminarApproved ? 'opacity-60 cursor-not-allowed' : ''
+                    } ${kehadiran === 'tidak_hadir' ? 'bg-yellow-100 border-yellow-300 text-yellow-800 shadow-md' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}
                   >
                     Tidak Hadir
                   </button>
@@ -601,42 +660,41 @@ if (student?.user_id) {
             
             {/* === NEW: ACC SEMINAR BUTTON (CONDITIONAL) === */}
             {!isSeminarApproved && (
-  validGuidanceCount >= 10 ? (
-    <div className="bg-[#eff6ff] rounded-2xl border border-blue-200 p-6 shadow-sm">
-      <div className="flex items-start gap-3 mb-4">
-        <CheckCircle className="text-blue-600 mt-1" size={20} />
-        <div>
-          <h3 className="text-sm font-bold text-blue-900">Kelayakan Seminar</h3>
-          <p className="text-xs text-blue-700 mt-1">
-            Mahasiswa memiliki {validGuidanceCount} bimbingan valid. Syarat terpenuhi untuk memberikan ACC.
-          </p>
-        </div>
-      </div>
+              validGuidanceCount >= 10 ? (
+                <div className="bg-[#eff6ff] rounded-2xl border border-blue-200 p-6 shadow-sm">
+                  <div className="flex items-start gap-3 mb-4">
+                    <CheckCircle className="text-blue-600 mt-1" size={20} />
+                    <div>
+                      <h3 className="text-sm font-bold text-blue-900">Kelayakan Seminar</h3>
+                      <p className="text-xs text-blue-700 mt-1">
+                        Mahasiswa memiliki {validGuidanceCount} bimbingan valid. Syarat terpenuhi untuk memberikan ACC.
+                      </p>
+                    </div>
+                  </div>
 
-      <button
-        onClick={handleAccSeminar}
-        disabled={saving}
-        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl text-sm shadow-md transition-all active:scale-95"
-      >
-        {saving ? "Memproses..." : "ACC Seminar"}
-      </button>
-    </div>
-  ) : (
-    <div className="bg-orange-50 rounded-2xl border border-orange-200 p-6 shadow-sm">
-      <div className="flex items-start gap-3">
-        <AlertCircle className="text-orange-600 mt-1" size={20} />
-        <div>
-          <h3 className="text-sm font-bold text-orange-900">Akses Seminar Terkunci</h3>
-          <p className="text-[11px] text-orange-700 mt-1">
-            Bimbingan Valid: {validGuidanceCount}/10. <br/>
-            Sesi dianggap sah jika mahasiswa <b>Hadir</b> dan status <b>ACC Draft</b>.
-          </p>
-        </div>
-      </div>
-    </div>
-  )
-)}
-
+                  <button
+                    onClick={handleAccSeminar}
+                    disabled={saving}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl text-sm shadow-md transition-all active:scale-95"
+                  >
+                    {saving ? "Memproses..." : "ACC Seminar"}
+                  </button>
+                </div>
+              ) : (
+                <div className="bg-orange-50 rounded-2xl border border-orange-200 p-6 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="text-orange-600 mt-1" size={20} />
+                   <div>
+                      <h3 className="text-sm font-bold text-orange-900">Akses Seminar Terkunci</h3>
+                      <p className="text-[11px] text-orange-700 mt-1">
+                        Bimbingan Valid: {validGuidanceCount}/10. <br/>
+                        Sesi dianggap sah jika mahasiswa <b>Hadir</b> dan telah diberikan keputusan review.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )
+            )}
 
             {/* === ALREADY APPROVED INFO === */}
             {isSeminarApproved && (
@@ -650,96 +708,100 @@ if (student?.user_id) {
             )}
 
            {/* File Upload Balasan & Display */}
-<div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-  <h3 className="text-sm font-bold text-gray-900 mb-4">File Balasan Dosen</h3>
-  
- 
- {/* 1. TAMPILAN FILE YANG SUDAH TERUPLOAD DI DATABASE */}
-{existingFileUrl && (
-  <div className="flex items-center justify-between bg-blue-50 border border-blue-100 p-4 rounded-xl mb-4 shadow-sm">
-    <div className="flex items-center gap-3 overflow-hidden">
-      <div className="p-2 bg-blue-100 rounded-lg text-blue-600">
-        <FileText size={20} />
-      </div>
-      <div className="overflow-hidden">
-        <p className="text-xs font-bold text-blue-900 truncate">
-          {decodeURIComponent(existingFileUrl?.split("/").pop()?.split("_").slice(1).join("_") || "File Pelengkap")}
-        </p>
-        <p className="text-[10px] text-blue-600 font-medium">File telah dikirim</p>
-      </div>
-    </div>
-    <div className="flex items-center gap-1">
-      <button
-        onClick={() => handleDownloadFeedback(existingFileUrl)}
-        className="text-blue-700 hover:text-blue-900 p-2 transition"
-        title="Unduh File"
-      >
-        <Download size={18} />
-      </button>
-      
-      
-    </div>
-  </div>
-)}
+          <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+            <h3 className="text-sm font-bold text-gray-900 mb-4">File Balasan Dosen</h3>
+            
+            {/* 1. TAMPILAN FILE YANG SUDAH TERUPLOAD DI DATABASE */}
+            {existingFileUrl && (
+              <div className="flex items-center justify-between bg-blue-50 border border-blue-100 p-4 rounded-xl mb-4 shadow-sm">
+                <div className="flex items-center gap-3 overflow-hidden">
+                  <div className="p-2 bg-blue-100 rounded-lg text-blue-600">
+                    <FileText size={20} />
+                  </div>
+                  <div className="overflow-hidden">
+                    <p className="text-xs font-bold text-blue-900 truncate">
+                      {decodeURIComponent(existingFileUrl?.split("/").pop()?.split("_").slice(1).join("_") || "File Pelengkap").replace(/%20/g, " ")}
+                    </p>
+                    <p className="text-[10px] text-blue-600 font-medium">File telah dikirim</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => handleDownloadFeedback(existingFileUrl)}
+                    className="text-blue-700 hover:text-blue-900 p-2 transition"
+                    title="Unduh File"
+                  >
+                    <Download size={18} />
+                  </button>
+                </div>
+              </div>
+            )}
 
-{/* 2. AREA UNGGAH FILE (Hanya muncul jika BELUM ada file di database) */}
-{!existingFileUrl && (
-  <div className="space-y-3">
-    <div 
-      onClick={() => fileInputRef.current?.click()}
-      className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition group ${
-        fileBalasan 
-          ? "border-green-300 bg-green-50" 
-          : "border-gray-300 hover:bg-gray-50"
-      }`}
-    >
-      <div className={`p-3 rounded-full mb-3 group-hover:scale-110 transition-transform ${
-        fileBalasan ? "bg-green-100 text-green-600" : "bg-blue-50 text-blue-500"
-      }`}>
-        <UploadCloud size={24} />
-      </div>
-      <p className="text-xs font-bold text-gray-700 mb-1">
-        {fileBalasan ? fileBalasan.name : "Klik untuk upload file balasan"}
-      </p>
-      <p className="text-[10px] text-gray-400">
-        {fileBalasan ? "File siap diunggah" : "PDF / DOCX (Max 5MB)"}
-      </p>
-      <input 
-        type="file" 
-        ref={fileInputRef} 
-        className="hidden" 
-        onChange={(e) => setFileBalasan(e.target.files?.[0] || null)} 
-      />
-    </div>
+            {/* 2. AREA UNGGAH FILE (Hanya muncul jika BELUM ada file di database) */}
+            {!existingFileUrl && (
+              isSeminarApproved ? (
+                /* 🔥 JIKA SUDAH ACC SEMINAR, TAMPILKAN STATE TERKUNCI 🔥 */
+                <div className="flex flex-col items-center justify-center p-8 bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl mb-6 text-gray-400">
+                  <Lock size={24} className="mb-2 opacity-50" />
+                  <p className="text-sm font-medium text-center">Sesi terkunci.<br/>Tidak dapat mengunggah dokumen baru.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div 
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition group ${
+                      fileBalasan 
+                        ? "border-green-300 bg-green-50" 
+                        : "border-gray-300 hover:bg-gray-50"
+                    }`}
+                  >
+                    <div className={`p-3 rounded-full mb-3 group-hover:scale-110 transition-transform ${
+                      fileBalasan ? "bg-green-100 text-green-600" : "bg-blue-50 text-blue-500"
+                    }`}>
+                      <UploadCloud size={24} />
+                    </div>
+                    <p className="text-xs font-bold text-gray-700 mb-1">
+                      {fileBalasan ? fileBalasan.name : "Klik untuk upload file balasan"}
+                    </p>
+                    <p className="text-[10px] text-gray-400">
+                      {fileBalasan ? "File siap diunggah" : "PDF / DOCX (Max 5MB)"}
+                    </p>
+                    <input 
+                      type="file" 
+                      ref={fileInputRef} 
+                      className="hidden" 
+                      onChange={(e) => setFileBalasan(e.target.files?.[0] || null)} 
+                    />
+                  </div>
 
-    {/* Tombol Batal jika baru sekedar memilih file di komputer (belum save ke DB) */}
-    {fileBalasan && (
-      <button 
-        onClick={(e) => { 
-          e.stopPropagation(); 
-          setFileBalasan(null); 
-        }} 
-        className="w-full py-2 text-xs text-red-500 font-bold hover:bg-red-50 rounded-lg transition"
-      >
-        Batalkan Pilihan
-      </button>
-    )}
-  </div>
-)}
+                  {fileBalasan && (
+                    <button 
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        setFileBalasan(null); 
+                      }} 
+                      className="w-full py-2 text-xs text-red-500 font-bold hover:bg-red-50 rounded-lg transition"
+                    >
+                      Batalkan Pilihan
+                    </button>
+                  )}
+                </div>
+              )
+            )}
 
-  {/* TOMBOL BATALKAN UPLOAD BARU */}
-  {fileBalasan && (
-    <button 
-      onClick={(e) => { 
-        e.stopPropagation(); 
-        setFileBalasan(null); 
-      }} 
-      className="mt-3 w-full py-2 text-xs text-red-500 font-bold hover:bg-red-50 rounded-lg transition"
-    >
-      Batalkan Perubahan File
-    </button>
-  )}
-</div>
+            {/* TOMBOL BATALKAN UPLOAD BARU */}
+            {fileBalasan && !isSeminarApproved && (
+              <button 
+                onClick={(e) => { 
+                  e.stopPropagation(); 
+                  setFileBalasan(null); 
+                }} 
+                className="mt-3 w-full py-2 text-xs text-red-500 font-bold hover:bg-red-50 rounded-lg transition"
+              >
+                Batalkan Perubahan File
+              </button>
+            )}
+          </div>
                 
             {/* Komentar Dosen */}
             <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm sticky top-6">
@@ -750,19 +812,34 @@ if (student?.user_id) {
                 <p className="text-sm font-bold text-gray-800">{session.dosen.nama}</p>
               </div>
               
-              <textarea
-                value={komentar}
-                onChange={(e) => setKomentar(e.target.value)}
-                placeholder="Tuliskan komentar, masukan, atau revisi untuk mahasiswa..."
-                className="w-full border border-gray-300 rounded-xl p-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 min-h-[200px] resize-none transition"
-              />
+              <div className="relative">
+                {/* 🔥 TEXTAREA DI-LOCK JIKA SEMINAR ACC 🔥 */}
+                <textarea
+                  value={komentar}
+                  disabled={isSeminarApproved}
+                  onChange={(e) => setKomentar(e.target.value)}
+                  placeholder={isSeminarApproved ? "Komentar sesi ini telah dikunci..." : "Tuliskan komentar, masukan, atau revisi untuk mahasiswa..."}
+                  className="w-full border border-gray-300 rounded-xl p-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 min-h-[200px] resize-none transition disabled:bg-gray-50 disabled:text-gray-400"
+                />
+                {isSeminarApproved && (
+                  <div className="absolute top-4 right-4 text-gray-300">
+                    <Lock size={18} />
+                  </div>
+                )}
+              </div>
 
+              {/* 🔥 TOMBOL SIMPAN DI-LOCK JIKA SEMINAR ACC 🔥 */}
               <button 
                 onClick={handleSave}
-                disabled={saving}
-                className="mt-4 w-full bg-[#3b608a] hover:bg-[#2a466f] text-white font-bold py-3 rounded-xl text-sm shadow-md transition-all disabled:opacity-70 flex items-center justify-center gap-2 active:scale-95"
+                disabled={saving || isSeminarApproved}
+                className={`mt-4 w-full text-white font-bold py-3 rounded-xl text-sm shadow-md transition-all flex items-center justify-center gap-2 
+                  ${isSeminarApproved 
+                    ? 'bg-gray-400 cursor-not-allowed shadow-none opacity-80' 
+                    : 'bg-[#3b608a] hover:bg-[#2a466f] active:scale-95 disabled:opacity-70'}`}
               >
-                {saving ? "Menyimpan..." : <><Save size={18} /> Simpan Hasil Bimbingan</>}
+                {isSeminarApproved 
+                  ? <><Lock size={18} /> Sesi Terkunci</> 
+                  : saving ? "Menyimpan..." : <><Save size={18} /> Simpan Hasil Bimbingan</>}
               </button>
             </div>
 

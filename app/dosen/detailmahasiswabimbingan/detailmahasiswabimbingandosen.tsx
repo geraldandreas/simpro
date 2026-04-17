@@ -1,15 +1,14 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
+import useSWR from "swr"; // 🚀 Import SWR
 import { useSearchParams, useRouter } from "next/navigation";
-import Image from "next/image";
 import { sendNotification } from "@/lib/notificationUtils";
-
+import Image from "next/image"; 
 import { supabase } from "@/lib/supabaseClient";
-// Sidebar dihapus
 import Link from "next/link"; 
 import { 
-  ArrowLeft, User, Calendar, MapPin, MessageSquare, ExternalLink, Edit, X 
+  ArrowLeft, User, Calendar, MapPin, MessageSquare, ExternalLink, Edit, X, Search
 } from "lucide-react";
 
 // --- TYPES ---
@@ -44,157 +43,153 @@ interface proposalData {
     npm: string;
     avatar_url?: string | null;
   };
-  
 }
+
+// ================= FETCHER SWR =================
+const fetchDetailBimbinganKaprodi = async (proposalId: string | null) => {
+  if (!proposalId) return null;
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("User belum login");
+
+  // 1. Ambil Data Mahasiswa
+  const { data, error: propError } = await supabase
+    .from("proposals")
+    .select(`
+      id,
+      judul,
+      status,
+      user:profiles (
+        nama,
+        npm,
+        avatar_url
+      )
+    `)
+    .eq("id", proposalId)
+    .single();
+    
+  const propData = data as unknown as proposalData;
+  if (propError) throw propError;
+
+  // 2. Ambil Pembimbing
+  const { data: supervisors } = await supabase
+    .from("thesis_supervisors")
+    .select(`role, dosen:profiles!thesis_supervisors_dosen_id_fkey ( nama )`)
+    .eq("proposal_id", proposalId);
+    
+  let p1 = "-", p2 = "-";
+  supervisors?.forEach((s: any) => {
+    if (s.role === "utama") p1 = s.dosen?.nama;
+    else p2 = s.dosen?.nama;
+  });
+
+  const studentDetail: StudentDetail = {
+    proposal_id: propData?.id,
+    nama: propData?.user?.nama || "Tanpa Nama",
+    npm: propData?.user?.npm || "-",
+    judul: propData?.judul,
+    status: propData?.status,
+    pembimbing1: p1,
+    pembimbing2: p2,
+    avatar_url: propData?.user?.avatar_url,
+  };
+
+  // 3. Ambil Riwayat Bimbingan
+  const { data: guidanceData } = await supabase
+    .from("guidance_sessions")
+    .select("*")
+    .eq("proposal_id", proposalId)
+    .eq("dosen_id", user.id)
+    .order("sesi_ke", { ascending: false });
+
+  return {
+    student: studentDetail,
+    sessions: (guidanceData || []) as GuidanceSession[]
+  };
+};
 
 export default function DetailMahasiswaBimbinganKaprodiClient() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const proposalId = searchParams.get("id");
 
-  const [student, setStudent] = useState<StudentDetail | null>(null);
-  const [sessions, setSessions] = useState<GuidanceSession[]>([]);
-  const [loading, setLoading] = useState(true);
+  // 🔥 IMPLEMENTASI SWR 🔥
+  const { data: cache, isLoading, mutate } = useSWR(
+    proposalId ? `detail_bimbingan_kaprodi_${proposalId}` : null,
+    () => fetchDetailBimbinganKaprodi(proposalId),
+    {
+      revalidateOnFocus: true,
+      refreshInterval: 60000 
+    }
+  );
+
+  const student = cache?.student || null;
+  const sessions = cache?.sessions || [];
 
   // --- STATE UNTUK MODAL EDIT ---
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingSession, setEditingSession] = useState<GuidanceSession | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
 
-  useEffect(() => {
-    if (!proposalId) return;
-    fetchData();
-  }, [proposalId]);
-
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      
-      const { data: { user } } = await supabase.auth.getUser();
-if (!user) throw new Error("User belum login");
-
-      // 1. Ambil Data Mahasiswa
-      const { data, error: propError } = await supabase
-  .from("proposals")
-  .select(`
-    id,
-    judul,
-    status,
-    user:profiles (
-      nama,
-      npm,
-      avatar_url
-    )
-  `)
-  .eq("id", proposalId)
-  .single();
-  const propData = data as unknown as proposalData;
-  
-      if (propError) throw propError;
-
-      // 2. Ambil Pembimbing
-      const { data: supervisors } = await supabase
-        .from("thesis_supervisors")
-        .select(`role, dosen:profiles!thesis_supervisors_dosen_id_fkey ( nama )`)
-        .eq("proposal_id", proposalId);
-      console.log("pembimbing1", supervisors)
-      let p1 = "-", p2 = "-";
-      supervisors?.forEach((s: any) => {
-        if (s.role === "utama") p1 = s.dosen?.nama;
-        else p2 = s.dosen?.nama;
-      });
-
-      setStudent({
-        proposal_id: propData?.id,
-        nama: propData?.user?.nama || "Tanpa Nama",
-        npm: propData?.user?.npm || "-",
-        judul: propData?.judul,
-        status: propData?.status,
-        pembimbing1: p1,
-        pembimbing2: p2,
-        avatar_url: propData?.user?.avatar_url || null,
-      });
-
-      // 3. Ambil Riwayat Bimbingan
-      const { data: guidanceData } = await supabase
-        .from("guidance_sessions")
-        .select("*")
-        .eq("proposal_id", proposalId)
-        .eq("dosen_id", user.id)
-        .order("sesi_ke", { ascending: false });
-
-      setSessions(guidanceData || []);
-
-    } catch (err) {
-      console.error("Error fetching detail:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   // --- HANDLERS ---
-
   const handleEditClick = (session: GuidanceSession) => {
     setEditingSession(session);
     setIsEditModalOpen(true);
   };
 
   const handleSaveEdit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  if (!editingSession) return;
-  setSavingEdit(true);
+    e.preventDefault();
+    if (!editingSession) return;
+    setSavingEdit(true);
 
-  try {
-    // 1. Update data sesi di database
-    const { error } = await supabase
-      .from("guidance_sessions")
-      .update({
-        tanggal: editingSession.tanggal,
-        jam: editingSession.jam,
-        metode: editingSession.metode,
-        keterangan: editingSession.keterangan,
-        status: editingSession.status,
-      })
-      .eq("id", editingSession.id);
+    try {
+      // 1. Update data sesi di database
+      const { error } = await supabase
+        .from("guidance_sessions")
+        .update({
+          tanggal: editingSession.tanggal,
+          jam: editingSession.jam,
+          metode: editingSession.metode,
+          keterangan: editingSession.keterangan,
+          status: editingSession.status,
+        })
+        .eq("id", editingSession.id);
 
-    if (error) throw error;
+      if (error) throw error;
 
-    // 2. Ambil user_id mahasiswa & Nama Dosen yang sedang login
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    // Ambil info nama dosen dari state student atau fetch ulang profile jika perlu
-    const namaDosen = student?.pembimbing1 || "Dosen Pembimbing";
+      // 2. Ambil user_id mahasiswa & Nama Dosen
+      const namaDosen = student?.pembimbing1 || "Dosen Pembimbing";
+      const { data: proposal } = await supabase
+        .from("proposals")
+        .select("user_id")
+        .eq("id", proposalId)
+        .single();
 
-    const { data: proposal } = await supabase
-      .from("proposals")
-      .select("user_id")
-      .eq("id", proposalId)
-      .single();
+      if (proposal?.user_id) {
+        let title = "Update Jadwal Bimbingan";
+        let message = `Dosen ${namaDosen} telah memperbarui jadwal bimbingan Sesi ${editingSession.sesi_ke}.`;
 
-    if (proposal?.user_id) {
-      let title = "Update Jadwal Bimbingan";
-      let message = `Dosen ${namaDosen} telah memperbarui jadwal bimbingan Sesi ${editingSession.sesi_ke}.`;
+        if (editingSession.status === "dibatalkan") {
+          title = "Bimbingan Dibatalkan";
+          message = `Maaf, bimbingan Sesi ${editingSession.sesi_ke} telah dibatalkan oleh Dosen ${namaDosen}.`;
+        }
 
-      // Jika statusnya dibatalkan
-      if (editingSession.status === "dibatalkan") {
-        title = "Bimbingan Dibatalkan";
-        message = `Maaf, bimbingan Sesi ${editingSession.sesi_ke} telah dibatalkan oleh Dosen ${namaDosen}.`;
+        // Kirim Notifikasi
+        await sendNotification(proposal.user_id, title, message);
       }
 
-      // Kirim Notifikasi
-      await sendNotification(proposal.user_id, title, message);
+      alert("✅ Detail sesi berhasil diperbarui!");
+      setIsEditModalOpen(false);
+      
+      // 🔥 REFRESH DATA SWR TANPA RELOAD 🔥
+      mutate(); 
+
+    } catch (err: any) {
+      alert("Gagal update: " + err.message);
+    } finally {
+      setSavingEdit(false);
     }
-
-    alert("✅ Detail sesi berhasil diperbarui!");
-    setIsEditModalOpen(false);
-    fetchData(); 
-
-  } catch (err: any) {
-    alert("Gagal update: " + err.message);
-  } finally {
-    setSavingEdit(false);
-  }
-};
+  };
 
   // Helper UI
   const formatDate = (dateStr: string) => {
@@ -213,22 +208,48 @@ if (!user) throw new Error("User belum login");
     }
   };
 
-  if (loading) return <div className="flex h-screen items-center justify-center text-gray-400">Memuat data...</div>;
-  if (!student) return <div className="flex h-screen items-center justify-center text-gray-400">Data tidak ditemukan.</div>;
+  if (isLoading && !cache) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-[#F8F9FB] z-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
 
+  if (!student) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center bg-[#F8F9FB]">
+        <div className="w-24 h-24 bg-slate-100 border-2 border-dashed border-slate-200 rounded-[2rem] flex items-center justify-center text-slate-300 mb-6 shadow-inner relative overflow-hidden">
+          <Search size={32} className="relative z-10" />
+          <div className="absolute w-full h-full bg-gradient-to-tr from-transparent to-slate-50 opacity-50"></div>
+        </div>
+        <h2 className="text-lg font-black text-slate-700 uppercase tracking-widest mb-2">Data Tidak Ditemukan</h2>
+        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest text-center max-w-xs">
+          Mahasiswa yang Anda cari tidak ada di sistem atau Anda tidak memiliki akses.
+        </p>
+        <button onClick={() => window.history.back()} className="mt-8 px-6 py-3 bg-white text-slate-600 text-[10px] font-black uppercase tracking-widest rounded-xl border border-slate-200 hover:bg-slate-50 transition-all shadow-sm active:scale-95">
+          Kembali
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-[#F8F9FB] font-sans text-slate-700">
-      
-      {/* HEADER tidak diperlukan karena ikut layout, atau bisa ditambahkan jika layoutnya kosong */}
-      
       <main className="flex-1 p-8">
         {/* HEADER CONTENT */}
-        <div className="mb-8">
-          <button onClick={() => router.back()} className="flex items-center gap-2 text-gray-500 hover:text-gray-700 mb-4 transition-colors">
-            <ArrowLeft size={18} /> <span className="text-sm font-medium">Kembali</span>
+        <div className="mb-10">
+          <button 
+            onClick={() => router.back()} 
+            className="group flex items-center gap-4 mb-8 w-fit transition-all active:scale-95"
+          >
+            <div className="w-12 h-12 bg-white border border-slate-200 rounded-2xl flex items-center justify-center text-slate-500 group-hover:text-blue-600 group-hover:border-blue-200 group-hover:bg-blue-50 group-hover:shadow-md transition-all shadow-sm shrink-0">
+              <ArrowLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
+            </div>
+            <span className="text-[11px] font-black text-slate-500 uppercase tracking-[0.15em] group-hover:text-blue-600 transition-colors">
+              Kembali ke Mahasiswa Bimbingan
+            </span>
           </button>
-          <h1 className="text-2xl font-bold text-gray-900">Detail Bimbingan Mahasiswa</h1>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -237,7 +258,6 @@ if (!user) throw new Error("User belum login");
           <div className="lg:col-span-1 space-y-6">
             <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
               <div className="flex flex-col items-center text-center mb-6">
-
                 <div className="w-24 h-24 bg-blue-50 rounded-full flex items-center justify-center mb-4 border-4 border-white shadow-md text-blue-600 font-bold text-3xl relative overflow-hidden shrink-0">
                   {student.avatar_url ? (
                     <Image 
@@ -256,7 +276,7 @@ if (!user) throw new Error("User belum login");
               <div className="space-y-4 border-t border-gray-100 pt-6">
                 <div>
                   <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Judul Skripsi</p>
-                  <p className="text-sm font-medium text-gray-800 leading-relaxed">{student.judul}</p>
+                  <p className="text-sm font-medium text-gray-800 leading-relaxed">"{student.judul}"</p>
                 </div>
                 <div>
                   <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Pembimbing 1</p>
@@ -314,7 +334,6 @@ if (!user) throw new Error("User belum login");
 
                         {/* ACTIONS */}
                         <div className="mt-4 flex justify-end gap-3 pt-3 border-t border-gray-50 opacity-0 group-hover:opacity-100 transition-opacity">
-                          {/* TOMBOL EDIT */}
                           <button 
                             className="flex items-center gap-1.5 text-xs font-bold text-gray-600 hover:text-gray-900 px-3 py-1.5 rounded transition bg-gray-100 hover:bg-gray-200"
                             onClick={() => handleEditClick(sesi)}
@@ -322,7 +341,6 @@ if (!user) throw new Error("User belum login");
                             <Edit size={14} /> Edit Detail
                           </button>
 
-                          {/* TOMBOL LIHAT (Link ke Halaman Detail Sesi Kaprodi) */}
                           <Link 
                             href={`/dosen/sesibimbingan?id=${sesi.id}`}
                             className="flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-700 px-3 py-1.5 rounded transition hover:bg-blue-50"
@@ -343,7 +361,6 @@ if (!user) throw new Error("User belum login");
         {isEditModalOpen && editingSession && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-              
               <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
                 <h3 className="text-lg font-bold text-gray-900">Edit Jadwal Sesi {editingSession.sesi_ke}</h3>
                 <button onClick={() => setIsEditModalOpen(false)} className="text-gray-400 hover:text-gray-600 transition">
@@ -352,8 +369,6 @@ if (!user) throw new Error("User belum login");
               </div>
 
               <form onSubmit={handleSaveEdit} className="p-6 space-y-4">
-                
-                {/* TANGGAL & JAM */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Tanggal</label>
@@ -375,7 +390,6 @@ if (!user) throw new Error("User belum login");
                   </div>
                 </div>
 
-                {/* METODE & STATUS */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Metode</label>
@@ -389,7 +403,6 @@ if (!user) throw new Error("User belum login");
                     </select>
                   </div>
                   
-                  {/* UPDATE STATUS DISINI */}
                   <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Status</label>
                     <select 
@@ -404,7 +417,6 @@ if (!user) throw new Error("User belum login");
                   </div>
                 </div>
 
-                {/* CATATAN */}
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1">keterangan / Lokasi</label>
                   <textarea 
@@ -431,12 +443,10 @@ if (!user) throw new Error("User belum login");
                     {savingEdit ? "Menyimpan..." : "Simpan Perubahan"}
                   </button>
                 </div>
-
               </form>
             </div>
           </div>
         )}
-
       </main>
     </div>
   );

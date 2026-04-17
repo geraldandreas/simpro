@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image"; 
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
-import useSWR, { mutate } from "swr"; // 🔥 IMPORT SWR
+import useSWR, { mutate } from "swr"; 
 import { supabase } from "@/lib/supabaseClient";
 import {
   LayoutDashboard,
@@ -15,6 +15,7 @@ import {
   Edit3,
   Settings,
   LogOut,
+  Award,
   FileCheck 
 } from "lucide-react";
 
@@ -40,9 +41,8 @@ export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
 
-  // 🔥 IMPLEMENTASI SWR UNTUK CACHING (ANTI KEDIP) 🔥
   const { data } = useSWR('sidebar_user_profile', fetchProfile, {
-    revalidateOnFocus: false, // Tidak perlu sering refresh karena data profil jarang berubah
+    revalidateOnFocus: false,
   });
 
   const displayName = data?.nama || "Loading...";
@@ -57,9 +57,9 @@ export default function Sidebar() {
     { icon: Calendar, label: "Jadwal Seminar & Sidang", href: "/mahasiswa/jadwal" },
     { icon: Edit3, label: "Perbaikan Pasca Seminar", href: "/mahasiswa/perbaikan" },
     { icon: FileCheck, label: "Dokumen Sidang", href: "/mahasiswa/dokumensidang" }, 
+    { icon: Award, label: "Nilai & Hasil Sidang", href: "/mahasiswa/nilaisidang" },
   ];
 
-  // ---------------- AUTO REFRESH JIKA PROFIL DIUBAH DI SETTINGS ----------------
   useEffect(() => {
     const channel = supabase
       .channel("profile-changes")
@@ -67,7 +67,6 @@ export default function Sidebar() {
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "profiles" },
         () => {
-          // Refresh SWR Cache secara instan jika ada perubahan di database
           mutate('sidebar_user_profile'); 
         }
       )
@@ -78,14 +77,20 @@ export default function Sidebar() {
     };
   }, []);
 
-  // ================= LOGOUT FUNCTION =================
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.push("/login");
   };
 
+  // ================= ACTIVE CLASS =================
+  const isActive = (href: string) =>
+    pathname === href || pathname.startsWith(`${href}/`)
+      ? "bg-blue-50 text-blue-700 font-semibold"
+      : "text-gray-400 hover:bg-gray-50";
+
   return (
-    <aside className="w-64 bg-[#F3F5F9] border-r border-gray-200 flex flex-col fixed h-full z-30">
+    // 🔥 CLASS DIPERBAIKI SAMA DENGAN KAPRODI 🔥
+    <aside className="w-64 bg-white border-r border-gray-200 flex flex-col fixed h-full z-30">
       
       {/* ================= USER PROFILE ================= */}
       <div className="p-6 pb-2">
@@ -114,57 +119,38 @@ export default function Sidebar() {
       </div>
 
       {/* ================= MENU ================= */}
-      <div className="flex-1 px-4 py-2 overflow-y-auto custom-scrollbar">
-        <div className="mb-6">
-          <p className="px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-            Menu
+      <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto custom-scrollbar">
+        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-2 mb-2">
+          MENU
+        </p>
+
+        {menuItems.map((item) => (
+          <Link key={item.href} href={item.href}>
+            <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition ${isActive(item.href)}`}>
+              <item.icon size={18} className="shrink-0" />
+              <span className="leading-tight">{item.label}</span>
+            </div>
+          </Link>
+        ))}
+
+        {/* ================= OTHERS ================= */}
+        <div className="pt-8">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-2 mb-2">
+            OTHERS
           </p>
 
-          <nav className="space-y-1">
-            {menuItems.map((item) => {
-              const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
-              return (
-                <Link key={item.href} href={item.href}>
-                  <div
-                    className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
-                      isActive
-                        ? "bg-blue-100 text-blue-700"
-                        : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"
-                    }`}
-                  >
-                    <item.icon size={20} />
-                    <span>{item.label}</span>
-                  </div>
-                </Link>
-              );
-            })}
-          </nav>
+          <Link href="/settings">
+            <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition ${isActive("/settings")}`}>
+              <Settings size={18} className="shrink-0" />
+              <span>Settings</span>
+            </div>
+          </Link>
         </div>
+      </nav>
 
-        <div>
-          <p className="px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-            Others
-          </p>
-
-          <nav className="space-y-1">
-            <Link href="/settings">
-              <div
-                className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
-                  pathname === "/settings"
-                    ? "bg-blue-100 text-blue-700"
-                    : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"
-                }`}
-              >
-                <Settings size={20} />
-                <span>Settings</span>
-              </div>
-            </Link>
-          </nav>
-        </div>
-      </div>
-
-      {/* ================= LOGOUT (GAYA DOSEN) ================= */}
-      <div className="p-6 mt-auto bg-[#F3F5F9]">
+      {/* ================= LOGOUT ================= */}
+      {/* 🔥 CLASS DIPERBAIKI SAMA DENGAN KAPRODI 🔥 */}
+      <div className="p-6 mt-auto bg-white">
         <button
           onClick={handleLogout}
           className="
@@ -181,7 +167,7 @@ export default function Sidebar() {
               text-gray-400
               group-hover:border-red-200
               group-hover:text-red-600
-              transition-all
+              transition-all shrink-0
             "
           >
             <LogOut size={18} className="rotate-180" />

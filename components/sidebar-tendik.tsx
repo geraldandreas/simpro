@@ -1,176 +1,151 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Image from "next/image"; 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import {
   LayoutDashboard,
-  FileUp,
   FileText,
   Settings,
-  HelpCircle,
   LogOut,
-  Users, // 🔥 Import icon Users untuk Manajemen Akun
+  Users,
 } from "lucide-react";
+
+const MENU_ITEMS = [
+  { label: "Dashboard", icon: LayoutDashboard, href: "/tendik/dashboardtendik" },
+  { label: "Manajemen Akun", icon: Users, href: "/tendik/manajemenakun" },
+];
 
 export default function SidebarTendik() {
   const pathname = usePathname();
   const router = useRouter();
 
-  const [nama, setNama] = useState("User");
-  const [inisial, setInisial] = useState("U");
+  const [nama, setNama] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null); 
 
-  // ================= LOAD PROFILE =================
+  // ================= FETCH PROFILE =================
   useEffect(() => {
-    const loadProfile = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
+     const fetchProfile = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
       const { data } = await supabase
         .from("profiles")
-        .select("nama")
+        .select("nama, avatar_url") 
         .eq("id", user.id)
         .single();
 
-      if (data?.nama) {
-        setNama(data.nama);
-        setInisial(data.nama.charAt(0).toUpperCase());
+      if (data) {
+        if (data.nama) setNama(data.nama);
+        if (data.avatar_url) setAvatarUrl(data.avatar_url); 
       }
     };
 
-    loadProfile();
+    fetchProfile();
   }, []);
 
   // ================= LOGOUT =================
   const handleLogout = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (!error) {
-      router.push("/login");
-      router.refresh();
-    }
+    await supabase.auth.signOut();
+    router.push("/login");
   };
 
-  // 🔥 TAMBAHAN MENU MANAJEMEN AKUN DI SINI 🔥
-  const MENU_ITEMS = [
-    {
-      label: "Dashboard",
-      icon: <LayoutDashboard size={18} />,
-      href: "/tendik/dashboardtendik",
-    },
-    {
-      label: "Verifikasi Berkas",
-      icon: <FileText size={18} />,
-      href: "/tendik/verifikasiberkas",
-    },
-    {
-      label: "Manajemen Akun",
-      icon: <Users size={18} />,
-      href: "/tendik/manajemenakun",
-    },
-  ];
-
-  const OTHER_ITEMS = [
-    { label: "Settings", icon: <Settings size={18} />, href: "/settings" },
-    { label: "Help", icon: <HelpCircle size={18} />, href: "/help" },
-  ];
-
-  const isItemActive = (href: string) =>
-    pathname === href || pathname?.startsWith(`${href}/`);
+  // ================= ACTIVE CLASS =================
+  const isActive = (href: string) =>
+    pathname === href || pathname?.startsWith(`${href}/`)
+      ? "bg-blue-50 text-blue-700 font-semibold"
+      : "text-gray-400 hover:bg-gray-50";
 
   return (
-    <aside className="w-64 bg-white border-r border-gray-200 flex flex-col fixed h-full z-30">
-      {/* HEADER / PROFILE */}
-      <div className="p-6 flex items-center gap-3 border-b border-gray-50">
-        <div className="w-10 h-10 bg-[#2b5a9e] rounded-full flex items-center justify-center text-white font-bold text-lg shadow-sm">
-          {inisial}
-        </div>
-        <div>
-          <p className="text-sm font-bold text-[#1e3a8a] leading-none">
-            {nama}
-          </p>
-          <p className="text-[10px] text-blue-400 mt-1 uppercase font-semibold tracking-wide">
-            Tenaga Kependidikan
-          </p>
+  <aside className="w-64 bg-white border-r border-gray-200 flex flex-col fixed h-full z-30">
+      
+      {/* ================= USER PROFILE ================= */}
+      <div className="p-6 pb-2">
+        <div className="flex items-center gap-3 mb-8">
+          <div className="w-10 h-10 rounded-full bg-[#2B5F9E] flex items-center justify-center text-white font-bold text-lg relative overflow-hidden shrink-0 shadow-inner">
+            {avatarUrl ? (
+              <Image 
+                src={avatarUrl} 
+                alt="Profile" 
+                layout="fill" 
+                objectFit="cover" 
+              />
+            ) : (
+              nama ? nama.charAt(0).toUpperCase() : "T"
+            )}
+          </div>
+          <div className="min-w-0">
+            <h3 className="text-sm font-bold text-gray-900 truncate">
+              {nama || "Tendik"}
+            </h3>
+            <p className="text-xs text-blue-600 font-medium capitalize">
+              Tenaga Kependidikan
+            </p>
+          </div>
         </div>
       </div>
 
-      {/* NAV */}
-      <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
+      {/* ================= MENU ================= */}
+      <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto custom-scrollbar">
         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-2 mb-2">
-          Menu
+          MENU
         </p>
 
         {MENU_ITEMS.map((item) => (
-          <NavItem
-            key={item.href}
-            {...item}
-            isActive={isItemActive(item.href)}
-          />
+          <Link key={item.href} href={item.href} className="block mb-1">
+            <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition ${isActive(item.href)}`}>
+              <item.icon size={18} />
+              <span>{item.label}</span>
+            </div>
+          </Link>
         ))}
 
+        {/* ================= OTHERS ================= */}
         <div className="pt-8">
           <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-2 mb-2">
-            Others
+            OTHERS
           </p>
 
-          {OTHER_ITEMS.map((item) => (
-            <NavItem
-              key={item.href}
-              {...item}
-              isActive={pathname === item.href}
-            />
-          ))}
+          <Link href="/settings" className="block mb-1">
+            <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition ${isActive("/settings")}`}>
+              <Settings size={18} />
+              <span>Settings</span>
+            </div>
+          </Link>
         </div>
       </nav>
 
-      {/* FOOTER */}
-      <div className="p-6 border-t border-gray-100">
+      {/* ================= LOGOUT ================= */}
+      <div className="p-6 mt-auto bg-white">
         <button
           onClick={handleLogout}
-          className="w-full flex items-center gap-3 text-gray-400 text-sm group hover:text-red-500 transition"
+          className="
+            w-full flex items-center gap-3 px-4 py-3
+            rounded-xl text-gray-500 font-medium
+            hover:bg-red-50 hover:text-red-600
+            transition-all group
+          "
         >
-          <LogOut
-            size={18}
-            className="rotate-180 group-hover:-translate-x-1 transition-transform"
-          />
-          <span className="font-medium text-xs">Log out</span>
+          <div
+            className="
+              w-9 h-9 flex items-center justify-center
+              rounded-lg border border-gray-200
+              text-gray-400
+              group-hover:border-red-200
+              group-hover:text-red-600
+              transition-all
+            "
+          >
+            <LogOut size={18} className="rotate-180" />
+          </div>
+
+          <span className="text-sm">Log out</span>
         </button>
-        <p className="text-xs text-gray-300 font-medium pl-8 mt-2">
-          V.1.0.0
-        </p>
+
+        <p className="text-xs text-gray-400 mt-3 ml-12">V.1.0.0</p>
       </div>
     </aside>
-  );
-}
-
-// ================= SUB COMPONENT =================
-function NavItem({
-  icon,
-  label,
-  href,
-  isActive,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  href: string;
-  isActive?: boolean;
-}) {
-  return (
-    <Link href={href} className="block mb-1">
-      <div
-        className={`flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition ${
-          isActive
-            ? "bg-blue-50 text-blue-700 shadow-sm"
-            : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-        }`}
-      >
-        {icon}
-        <span>{label}</span>
-      </div>
-    </Link>
   );
 }

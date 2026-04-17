@@ -4,7 +4,7 @@ import React, { useEffect, useState, useRef } from "react";
 import useSWR from "swr"; 
 import { 
   Bell, Search, Trash2, LogOut, Check, User, 
-  ShieldCheck, AlertCircle, Phone, Mail, IdCard, Lock, Camera, PenTool, UploadCloud 
+  ShieldCheck, AlertCircle, Phone, Mail, IdCard, Lock, Camera, PenTool, UploadCloud,MapPin, 
 } from "lucide-react"; 
 import NotificationBell from '@/components/notificationBell';
 import { supabase } from "@/lib/supabaseClient";
@@ -23,9 +23,10 @@ interface ProfileForm {
   npm_nip: string;
   email: string;
   phone: string;
+  alamat: string;
   role: string;
   avatar_url: string | null; 
-  ttd_url: string | null; // 🔥 TAMBAHAN STATE TTD
+  ttd_url: string | null; 
 }
 
 // ================= FETCHER SWR =================
@@ -47,7 +48,7 @@ const fetchProfileData = async () => {
 export default function SettingsPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const ttdInputRef = useRef<HTMLInputElement>(null); // 🔥 REF UNTUK INPUT TTD
+  const ttdInputRef = useRef<HTMLInputElement>(null); 
 
   const { data, error, isLoading, mutate } = useSWR('settings_user_profile', fetchProfileData, {
     revalidateOnFocus: false, 
@@ -58,15 +59,16 @@ export default function SettingsPage() {
     npm_nip: "",
     email: "",
     phone: "",
-    role: "mahasiswa", 
+    alamat: "",
+    role: "", // Kosongkan role default
     avatar_url: null,
-    ttd_url: null, // 🔥 INIT TTD
+    ttd_url: null, 
   });
 
   const [initialized, setInitialized] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
-  const [uploadingTtd, setUploadingTtd] = useState(false); // 🔥 STATE LOADING TTD
+  const [uploadingTtd, setUploadingTtd] = useState(false); 
 
   useEffect(() => {
     if (data?.profile && !initialized) {
@@ -75,9 +77,10 @@ export default function SettingsPage() {
         npm_nip: data.profile.npm || data.profile.nip || "",
         email: data.profile.email ?? data.user.email ?? "",
         phone: data.profile.phone ?? "",
+        alamat: data.profile.alamat ?? "",
         role: data.profile.role ?? "mahasiswa",
         avatar_url: data.profile.avatar_url ?? null,
-        ttd_url: data.profile.ttd_url ?? null, // 🔥 SINKRONISASI DATA TTD
+        ttd_url: data.profile.ttd_url ?? null, 
       });
       setInitialized(true);
     }
@@ -127,7 +130,7 @@ export default function SettingsPage() {
     }
   };
 
-  // ================= UPLOAD TTD LOGIC 🔥 =================
+  // ================= UPLOAD TTD LOGIC =================
   const handleTtdUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     try {
       setUploadingTtd(true);
@@ -144,7 +147,6 @@ export default function SettingsPage() {
       const fileExt = file.name.split('.').pop();
       const fileName = `ttd_${userId}_${Date.now()}.${fileExt}`;
       
-      // 🔥 Pastikan bucket 'signatures' sudah dibuat di Supabase
       const { error: uploadError } = await supabase.storage.from('signatures').upload(fileName, file, { upsert: true });
       if (uploadError) throw uploadError;
 
@@ -167,12 +169,22 @@ export default function SettingsPage() {
 
   // ================= SAVE PROFILE LOGIC =================
   const handleSaveProfile = async () => {
+    if (form.role === "mahasiswa" && !form.alamat.trim()) {
+      alert("Alamat wajib diisi bagi Mahasiswa.");
+      return;
+    }
+
     setSaving(true);
     try {
       const userId = data?.user?.id;
       if (!userId) return;
 
-      const payload: any = { nama: form.nama, phone: form.phone };
+      const payload: any = { 
+        nama: form.nama, 
+        phone: form.phone,
+        alamat: form.alamat 
+      };
+      
       if (form.role === "mahasiswa") payload.npm = form.npm_nip;
       else payload.nip = form.npm_nip;
 
@@ -193,20 +205,40 @@ export default function SettingsPage() {
     router.push("/login");
   };
 
+  // 🔥 PERBAIKAN: Tahan render seluruh halaman sampai role ditemukan 🔥
+  if (isLoading || !initialized) {
+    return (
+      <div className="flex min-h-screen bg-[#F8F9FB]">
+        {/* Skeleton Sidebar */}
+        <aside className="w-64 bg-white border-r border-gray-200 flex flex-col fixed h-full z-30 animate-pulse"></aside>
+        <main className="flex-1 ml-64 min-h-screen flex flex-col p-10">
+          <div className="max-w-7xl mx-auto w-full animate-pulse">
+            <div className="h-10 bg-slate-200 w-1/3 rounded-lg mb-10"></div>
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+              <div className="lg:col-span-8 bg-slate-200 h-[500px] rounded-[2.5rem]"></div>
+              <div className="lg:col-span-4 bg-slate-200 h-[200px] rounded-[2.5rem]"></div>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   const renderSidebar = () => {
     switch (form.role) {
       case "dosen": return <SidebarDosen />;
       case "tendik": return <SidebarTendik />;
       case "kaprodi": return <SidebarKaprodi />;
-      default: return <SidebarMahasiswa />;
+      case "mahasiswa": return <SidebarMahasiswa />;
+      default: return null; 
     }
   };
 
   return (
-    <div className="flex min-h-screen bg-[#F4F7FE] font-sans text-slate-700">
+    <div className="flex min-h-screen bg-[#F8F9FB] font-sans text-slate-700">
       {renderSidebar()}
 
-      <main className={`flex-1 min-h-screen flex flex-col overflow-y-auto custom-scrollbar ${form.role !== "dosen" ? "ml-64" : ""}`}>
+      <main className={`flex-1 min-h-screen flex flex-col overflow-y-auto custom-scrollbar ${form.role === "dosen" ? "" : "ml-64"}`}>
         
         {/* HEADER */}
         <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
@@ -224,16 +256,7 @@ export default function SettingsPage() {
             <p className="text-slate-500 font-medium mt-1">Kelola informasi profil dan keamanan akun Anda dalam satu tempat.</p>
           </header>
 
-          {isLoading && !data ? (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 animate-pulse">
-              <div className="lg:col-span-8 space-y-10">
-                <div className="bg-slate-200 h-[500px] rounded-[2.5rem]"></div>
-              </div>
-              <div className="lg:col-span-4 space-y-10">
-                <div className="bg-slate-200 h-[200px] rounded-[2.5rem]"></div>
-              </div>
-            </div>
-          ) : error ? (
+          {error ? (
             <div className="p-10 text-center font-black text-red-500 uppercase tracking-widest bg-white rounded-[2.5rem] shadow-xl">Gagal memuat profil.</div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
@@ -281,7 +304,6 @@ export default function SettingsPage() {
                       </div>
 
                       <div>
-                        {/* HAPUS CLASS 'uppercase' DISINI */}
                         <h3 className="text-2xl font-black text-slate-800 leading-none tracking-tight">{form.nama || "User"}</h3>
                         <p className="text-blue-600 font-black tracking-[0.15em] text-[10px] mt-3 bg-blue-50 px-4 py-1.5 rounded-full border border-blue-100 w-fit uppercase">
                           {form.role}
@@ -289,14 +311,25 @@ export default function SettingsPage() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 ">
                       <InputGroup label="Nama Lengkap" icon={<User size={16}/>} value={form.nama} onChange={(v) => updateField("nama", v)} />
                       <InputGroup label={form.role === "mahasiswa" ? "NPM" : "NIP / NIDN"} icon={<IdCard size={16}/>} value={form.npm_nip} onChange={(v) => updateField("npm_nip", v)} />
                       <InputGroup label="Email Institusi" icon={<Mail size={16}/>} value={form.email} disabled onChange={() => {}} />
                       <InputGroup label="Nomor WhatsApp" icon={<Phone size={16}/>} value={form.phone} onChange={(v) => updateField("phone", v)} placeholder="0812xxxx" />
                     </div>
-
-                    {/* 🔥 SECTION: TANDA TANGAN DIGITAL (KHUSUS DOSEN) 🔥 */}
+                    
+                    {/* KOLOM ALAMAT */}
+                    <div className="md:col-span-2 mt-6">
+                      <InputGroup 
+                        label="Alamat Lengkap" 
+                        icon={<MapPin size={16}/>} 
+                        value={form.alamat} 
+                        onChange={(v) => updateField("alamat", v)} 
+                        placeholder="Jl. Raya No. 123, Kota..." 
+                      />
+                    </div>
+      
+                    {/* SECTION: TANDA TANGAN DIGITAL (KHUSUS DOSEN & KAPRODI) */}
                     {isDosenSettings && (
                       <div className="mt-10 pt-8 border-t border-slate-50">
                         <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">
@@ -304,7 +337,6 @@ export default function SettingsPage() {
                         </label>
                         
                         <div className="flex items-center gap-6">
-                          {/* Preview TTD */}
                           <div className="w-48 h-24 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl flex items-center justify-center relative overflow-hidden group">
                             {form.ttd_url ? (
                               <Image src={form.ttd_url} alt="Tanda Tangan" layout="fill" objectFit="contain" className="p-2" />
@@ -312,7 +344,6 @@ export default function SettingsPage() {
                               <span className="text-[10px] font-black uppercase tracking-widest text-slate-300">Belum Ada TTD</span>
                             )}
 
-                            {/* Tombol Upload Overlay */}
                             <div 
                               onClick={() => ttdInputRef.current?.click()}
                               className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer gap-2 text-white font-black text-[10px] uppercase tracking-widest"
@@ -330,7 +361,6 @@ export default function SettingsPage() {
                             {uploadingTtd && <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mt-2 animate-pulse">Menyimpan Tanda Tangan...</p>}
                           </div>
 
-                          {/* Hidden Input File untuk TTD */}
                           <input 
                             type="file" accept="image/png, image/jpeg, image/jpg" className="hidden" 
                             ref={ttdInputRef} onChange={handleTtdUpload}
@@ -363,13 +393,6 @@ export default function SettingsPage() {
                       <div className="flex items-center gap-4">
                         <div className="p-2 bg-slate-50 group-hover:bg-red-100 rounded-lg transition-colors"><LogOut size={18} /></div>
                         <span className="text-xs uppercase tracking-widest font-black">Keluar</span>
-                      </div>
-                    </button>
-
-                    <button className="w-full flex items-center justify-between p-5 text-slate-400 font-bold hover:bg-red-50 hover:text-red-600 rounded-2xl border border-transparent hover:border-red-100 transition-all group">
-                      <div className="flex items-center gap-4">
-                        <div className="p-2 bg-slate-50 group-hover:bg-red-100 rounded-lg transition-colors"><Trash2 size={18} /></div>
-                        <span className="text-xs uppercase tracking-widest font-black">Hapus Akun</span>
                       </div>
                     </button>
                   </div>

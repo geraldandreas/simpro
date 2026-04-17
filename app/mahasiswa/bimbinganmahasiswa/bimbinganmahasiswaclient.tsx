@@ -2,9 +2,8 @@
 
 import React, { useState } from "react";
 import useSWR from "swr"; // 🔥 IMPORT SWR
-import Sidebar from "@/components/sidebar";
-import NotificationBell from "@/components/notificationBell";
 import Link from "next/link";
+import Image from "next/image";
 import {
   Calendar,
   Clock,
@@ -29,6 +28,7 @@ interface BimbinganRow {
   statusData: string;  // 🔥 Dipisah untuk SWR Cache
   keterangan: string;
   pembimbing: string;
+  avatarDosen?: string | null;
   status: string;
   kehadiran: string;
   feedback?: string;
@@ -57,7 +57,7 @@ const fetchBimbinganData = async () => {
     .from("guidance_sessions")
     .select(`
       id, sesi_ke, tanggal, jam, metode, keterangan, status, kehadiran_mahasiswa,
-      dosen:profiles ( nama ),
+      dosen:profiles ( nama, avatar_url ),
       proposal:proposals ( user_id ),
       feedbacks:session_feedbacks ( status_revisi, created_at )
     `)
@@ -78,6 +78,7 @@ const fetchBimbinganData = async () => {
       statusData: row.status || "-",
       keterangan: row.keterangan || "-", 
       pembimbing: row.dosen?.nama ?? "-",
+      avatarDosen: row.dosen?.avatar_url || null,
       status: row.status,
       kehadiran: row.kehadiran_mahasiswa,
       feedback: row.feedbacks[0]?.status_revisi,
@@ -115,24 +116,7 @@ export default function BimbinganMahasiswaClient() {
   };
 
   return (
-    <div className="flex min-h-screen bg-[#F4F7FE] font-sans text-slate-700">
-      <Sidebar />
-
-      <main className="flex-1 ml-64 min-h-screen flex flex-col h-screen overflow-hidden">
-        {/* HEADER */}
-        <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
-          <div className="flex items-center gap-6"><div className="relative w-72 group"></div></div>
-          <div className="flex items-center gap-6">
-            <NotificationBell />
-            <div className="h-8 w-[1px] bg-slate-200 mx-2" />
-            <div className="flex items-center gap-6">
-              <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">Simpro</span>
-            </div>
-          </div>
-        </header>
-
-        <div className="flex-1 overflow-y-auto p-10 custom-scrollbar">
-          <div className="max-w-[1400px] mx-auto">
+    <div className="p-10 max-w-[1400px] mx-auto outline-none focus:outline-none">
             <header className="mb-10 flex flex-col gap-2">
                 <h1 className="text-3xl font-black text-slate-800 tracking-tight">Manajemen Bimbingan</h1>
                 <p className="text-slate-500 font-medium mt-1">Pantau jadwal dan ringkasan riwayat konsultasi akademik Anda secara real-time.</p>
@@ -165,7 +149,7 @@ export default function BimbinganMahasiswaClient() {
                   <LayoutDashboard size={20} />
                 </div>
                 <h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">
-                  Log Konsultasi Mahasiswa
+                  Log Bimbingan Mahasiswa
                 </h2>
               </div>
 
@@ -173,18 +157,18 @@ export default function BimbinganMahasiswaClient() {
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-slate-50/50 text-[11px] uppercase tracking-[0.15em] text-slate-400 font-black border-b border-slate-100">
-                      <th className="px-8 py-6 w-[12%]">Sesi</th>
-                      <th className="px-8 py-6 w-[28%]">Waktu & Keterangan</th>
+                      <th className="px-10 py-6 w-[12%]">Sesi</th>
+                      <th className="px-10 py-6 w-[28%]">Waktu & Keterangan</th>
                       {activeTab === "jadwal" ? (
                         <>
-                          <th className="px-8 py-6 w-[15%]">Metode</th>
-                          <th className="px-8 py-6 w-[30%]">Pembimbing</th>
+                          <th className="px-10 py-6 w-[15%]">Metode</th>
+                          <th className="px-8 py-6 w-[30%] text-center">Pembimbing</th>
                         </>
                       ) : (
                         <>
                           <th className="px-8 py-6 w-[20%] text-center">Pembimbing</th>
-                          <th className="px-8 py-6 text-center w-[15%]">Hasil Review</th>
-                          <th className="px-8 py-6 text-center w-[10%]">Presensi</th>
+                          <th className="px-8 py-6 text-center w-[15%] text-center">Hasil Review</th>
+                          <th className="px-8 py-6 text-center w-[10%] text-center">Presensi</th>
                         </>
                       )}
                       <th className="px-8 py-6 text-center w-[15%]">Tindakan</th>
@@ -194,9 +178,11 @@ export default function BimbinganMahasiswaClient() {
                   <tbody className="divide-y divide-slate-50">
                     {/* SKELETON LOADING BISA DITAMBAHKAN DI SINI, TAPI KITA PAKAI ROW ANIMATE SAJA AGAR UI TETAP SAMA */}
                     {isLoading && rows.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="px-8 py-20 text-center text-slate-400 font-bold animate-pulse uppercase tracking-widest">Sinkronisasi Data...</td>
-                      </tr>
+                      <>
+                        {[...Array(itemsPerPage)].map((_, i) => (
+                          <SkeletonRow key={i} />
+                        ))}
+                      </>
                     ) : currentData.length === 0 ? (
                       <tr>
                         <td colSpan={6} className="px-8 py-24 text-center">
@@ -217,7 +203,7 @@ export default function BimbinganMahasiswaClient() {
 
                           <td className="px-8 py-8">
                             <div className="flex flex-col gap-2">
-                              <div className="flex items-center gap-2 text-sm font-black text-slate-700 uppercase tracking-tighter">
+                              <div className="flex items-center gap-2 text-sm font-black text-slate-700 tracking-tighter">
                                 <Calendar size={14} className="text-blue-500" /> {item.hariTanggal}
                               </div>
                               <div className="flex items-center gap-2 text-[11px] font-black text-slate-400 tracking-widest uppercase">
@@ -247,18 +233,29 @@ export default function BimbinganMahasiswaClient() {
                                   {item.metode}
                                 </div>
                               </td>
-                              <td className="px-8 py-8">
-                                <div className="flex items-center gap-4">
-                                  <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-black group-hover:bg-blue-600 group-hover:text-white transition-all duration-300 shadow-inner uppercase shrink-0">
-                                    {item.pembimbing.charAt(0)}
-                                  </div>
-                                  <p className="text-sm font-black text-slate-700 tracking-tight uppercase truncate">{item.pembimbing}</p>
-                                </div>
-                              </td>
+                             <td className="px-8 py-8">
+  <div className="flex items-center justify-center gap-4"> {/* 🔥 Tambahkan justify-center */}
+    <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-black group-hover:bg-blue-600 group-hover:text-white transition-all duration-300 shadow-inner uppercase shrink-0 relative overflow-hidden">
+      {item.avatarDosen ? (
+        <Image 
+          src={item.avatarDosen} 
+          alt={item.pembimbing || "Dosen"} 
+          fill 
+          className="object-cover" 
+        />
+      ) : (
+        item.pembimbing.charAt(0)
+      )}
+    </div>
+    <p className="text-sm font-black text-slate-700 tracking-tight truncate">
+      {item.pembimbing}
+    </p>
+  </div>
+</td>
                             </>
                           ) : (
                             <>
-                              <td className="px-8 py-8 text-sm font-black text-slate-700 uppercase tracking-tight text-center">{item.pembimbing}</td>
+                              <td className="px-8 py-8 text-sm font-black text-slate-700 tracking-tight text-center">{item.pembimbing}</td>
                               <td className="px-8 py-8 text-center">
                                 <span className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border shadow-sm ${
                                   item.feedback === "disetujui" ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-orange-50 text-orange-700 border-orange-100"
@@ -275,7 +272,7 @@ export default function BimbinganMahasiswaClient() {
                           )}
 
                           <td className="px-8 py-8 text-center">
-                            <Link href={`/mahasiswa/bimbinganmahasiswa/detailbimbingan?id=${item.id}`}>
+                            <Link href={`/mahasiswa/detailbimbingan?id=${item.id}`}>
                               <button className="inline-flex items-center gap-2 px-6 py-3 bg-slate-900 hover:bg-blue-600 text-white text-[10px] font-black uppercase tracking-[0.15em] rounded-2xl transition-all shadow-lg active:scale-95 group/btn">
                                 DETAIL <ArrowRight size={14} className="group-hover/btn:translate-x-1 transition-transform" />
                               </button>
@@ -288,11 +285,14 @@ export default function BimbinganMahasiswaClient() {
                 </table>
               </div>
 
+
               {/* PAGINATION */}
               <div className="p-10 bg-slate-50/30 border-t border-slate-50 flex justify-between items-center">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
                   Menampilkan {filteredRows.length > 0 ? indexOfFirstItem + 1 : 0} - {Math.min(indexOfLastItem, filteredRows.length)} dari {filteredRows.length} Sesi
                 </p>
+                
+
                 
                 <div className="flex gap-2">
                   <PaginationButton 
@@ -319,9 +319,35 @@ export default function BimbinganMahasiswaClient() {
               </div>
             </div>
           </div>
+  );
+}
+
+// 🔥 HELPER SKELETON ROW
+function SkeletonRow() {
+  return (
+    <tr className="animate-pulse">
+      <td className="px-8 py-8">
+        <div className="h-10 w-16 bg-slate-300 rounded-xl"></div>
+      </td>
+      <td className="px-8 py-8">
+        <div className="space-y-3">
+          <div className="h-4 w-40 bg-slate-300 rounded-md"></div>
+          <div className="h-3 w-24 bg-slate-200 rounded-md"></div>
         </div>
-      </main>
-    </div>
+      </td>
+      <td className="px-8 py-8">
+        <div className="h-4 w-20 bg-slate-200 rounded-md"></div>
+      </td>
+      <td className="px-8 py-8 text-center">
+        <div className="flex items-center justify-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-slate-300"></div>
+          <div className="h-4 w-32 bg-slate-200 rounded-md"></div>
+        </div>
+      </td>
+      <td className="px-8 py-8 text-center">
+        <div className="h-10 w-28 bg-slate-300 rounded-2xl mx-auto"></div>
+      </td>
+    </tr>
   );
 }
 

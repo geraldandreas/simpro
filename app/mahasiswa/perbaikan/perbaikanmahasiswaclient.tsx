@@ -2,8 +2,6 @@
 
 import React from 'react';
 import useSWR from 'swr';
-import Sidebar from '@/components/sidebar';
-import NotificationBell from '@/components/notificationBell';
 import { supabase } from '@/lib/supabaseClient';
 import { useRouter } from 'next/navigation';
 import { 
@@ -23,6 +21,25 @@ interface ExaminerRevisi {
   catatan_revisi: string;
   jawaban_revisi: string;
 }
+
+// 🔥 Helper untuk Parsing JSON dengan Aman 🔥
+const parseSafelist = (dataString: string) => {
+  if (!dataString) return [];
+  try {
+    const parsed = JSON.parse(dataString);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    // Fallback jika datanya berupa string biasa
+    return dataString.split('\n').filter(l => l.trim() !== '').map(text => ({ text, answerText: text }));
+  }
+};
+
+const formatTextPlain = (text: string) => {
+  if (!text) return "<br><br><br>";
+  const lines = text.split('\n').filter(l => l.trim() !== '');
+  if (lines.length === 0) return "<br><br><br>";
+  return lines.map((line, idx) => `${String.fromCharCode(65 + idx)}. ${line}`).join('<br><br>');
+};
 
 // ================= FETCHER SWR =================
 const fetchRevisiData = async () => {
@@ -118,11 +135,11 @@ export default function PerbaikanMahasiswaClient() {
   const scheduleDate = data?.schedule;
 
   const formatRole = (role: string) => {
-    if (role === 'penguji1') return "Penguji Utama";
-    if (role === 'penguji2') return "Anggota Penguji 1";
-    if (role === 'penguji3') return "Anggota Penguji 2";
+    if (role === 'penguji1') return "Penguji 1";
+    if (role === 'penguji2') return "Penguji 2";
+    if (role === 'penguji3') return "Penguji 3";
     if (role === 'utama' || role === 'pembimbing1') return "Pembimbing Utama";
-    if (role === 'pendamping' || role === 'pembimbing2') return "Pembimbing Pendamping";
+    if (role === 'pendamping' || role === 'pembimbing2') return "Co-Pembimbing";
     return "Penguji";
   };
 
@@ -136,13 +153,6 @@ export default function PerbaikanMahasiswaClient() {
     const formattedDate = scheduleDate?.includes("-") 
       ? new Date(scheduleDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
       : scheduleDate;
-
-    const formatText = (text: string) => {
-      if (!text) return "<br><br><br>";
-      const lines = text.split('\n').filter(l => l.trim() !== '');
-      if (lines.length === 0) return "<br><br><br>";
-      return lines.map((line, idx) => `${String.fromCharCode(65 + idx)}. ${line}`).join('<br><br>');
-    };
 
     const getDosenByRole = (roleKeys: string[]) => {
        return examiners.find(e => roleKeys.includes(e.role));
@@ -160,6 +170,36 @@ export default function PerbaikanMahasiswaClient() {
         return `<tr><td style="border: 1px solid black; padding: 8px; text-align: center;">${no}.</td><td style="border: 1px solid black; padding: 8px;">${labelTitle}</td><td style="border: 1px solid black;"></td><td style="border: 1px solid black;"></td></tr>`;
       }
       
+      let uraianHtml = "<br><br><br>";
+      let jawabanHtml = "<br><br><br>";
+
+      // 🔥 Menerapkan Parsing JSON ke dalam Word 🔥
+      if (dosenData.catatan_revisi.trim().startsWith('[') || dosenData.jawaban_revisi.trim().startsWith('[')) {
+        const catatanList = parseSafelist(dosenData.catatan_revisi);
+        const jawabanList = parseSafelist(dosenData.jawaban_revisi);
+
+        if (catatanList.length > 0) {
+           uraianHtml = catatanList.map((p: any, i: number) => {
+             const text = p.text || p.pointText || (typeof p === 'string' ? p : '');
+             return `${String.fromCharCode(65 + i)}. ${text}`;
+           }).join('<br><br>');
+        }
+
+        if (jawabanList.length > 0) {
+           jawabanHtml = jawabanList.map((p: any, i: number) => {
+             const answer = p.answerText || (typeof p === 'string' ? p : 'Belum ada jawaban');
+             return `${String.fromCharCode(65 + i)}. ${answer}`;
+           }).join('<br><br>');
+        } else if (catatanList.length > 0) {
+           // Jika belum ada JSON jawaban, tampilkan slot kosong sebanyak pertanyaan
+           jawabanHtml = catatanList.map((_: any, i: number) => `${String.fromCharCode(65 + i)}. Belum ada jawaban`).join('<br><br>');
+        }
+      } else {
+        // Fallback Data Lama (Plain Text)
+        uraianHtml = formatTextPlain(dosenData.catatan_revisi);
+        jawabanHtml = formatTextPlain(dosenData.jawaban_revisi);
+      }
+
       // Memaksa ukuran MS Word ke CM
       const ttdHtml = dosenData.ttd_url 
         ? `<div style="text-align: center;">
@@ -173,11 +213,11 @@ export default function PerbaikanMahasiswaClient() {
           <td style="border: 1px solid black; padding: 8px; vertical-align: top;">
               ${labelTitle}<br/>
               <strong>${dosenData.nama_dosen}</strong><br/><br/>
-              ${formatText(dosenData.catatan_revisi)}
+              ${uraianHtml}
           </td>
           <td style="border: 1px solid black; padding: 8px; vertical-align: top;">
               <br/><br/>
-              ${formatText(dosenData.jawaban_revisi)}
+              ${jawabanHtml}
           </td>
           <td style="border: 1px solid black; padding: 8px; vertical-align: middle; text-align: center; width: 15%;">
               ${ttdHtml}
@@ -240,32 +280,47 @@ export default function PerbaikanMahasiswaClient() {
   };
 
   return (
-    <div className="flex h-screen bg-[#F4F7FE] font-sans text-slate-700 overflow-hidden">
-      <Sidebar />
-      <main className="flex-1 ml-64 flex flex-col h-full overflow-y-auto custom-scrollbar">
         
-        <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
-          <div className="flex items-center gap-6"></div>
-          <div className="flex items-center gap-6">
-            <NotificationBell />
-            <div className="h-8 w-[1px] bg-slate-200 mx-2" />
-            <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">Simpro</span>
-          </div>
-        </header>
-
-        <div className="p-10 max-w-7xl mx-auto w-full">
-          
-          <header className="mb-10">
-            <h1 className="text-3xl font-black text-slate-800 tracking-tight leading-none uppercase">Perbaikan Pasca Seminar</h1>
-            <p className="text-slate-500 font-medium mt-3 tracking-normal normal-case font-serif">
+        <div className="p-10 max-w-[1400px] mx-auto pb-24">
+          <div className="mb-10">
+            <h1 className="text-3xl font-black text-slate-800 tracking-tight">
+              Perbaikan Pasca Seminar
+            </h1>
+            <p className="text-slate-500 mt-2 font-medium">
               Selesaikan revisi dengan Dewan Penguji untuk melangkah ke tahap Sidang Skripsi Akhir.
             </p>
-          </header>
+          </div>
 
+          {/* 🔥 SKELETON UI LOADING 🔥 */}
           {isLoading && !data ? (
-            <div className="h-96 flex flex-col items-center justify-center bg-white rounded-[2.5rem] border border-white shadow-xl shadow-slate-200/50 animate-pulse">
-              <div className="h-12 w-12 border-4 border-slate-200 border-t-blue-400 rounded-full mb-4 animate-spin" />
-              <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">Menyinkronkan Data...</p>
+            <div className="space-y-10 animate-pulse">
+              <div className="bg-white p-10 rounded-[2.5rem] border border-white shadow-xl shadow-slate-200/50 relative overflow-hidden">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-slate-300 rounded-2xl"></div>
+                    <div className="h-6 w-64 bg-slate-300 rounded-lg"></div>
+                  </div>
+                  <div className="h-8 w-32 bg-slate-200 rounded-full"></div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4">
+                  {[1, 2, 3, 4, 5].map((idx) => (
+                    <div key={idx} className="bg-slate-50 border border-slate-100 p-6 rounded-[2rem] flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                      <div className="flex items-center gap-5">
+                        <div className="w-16 h-16 bg-slate-300 rounded-2xl"></div>
+                        <div className="space-y-2">
+                          <div className="h-5 w-48 bg-slate-300 rounded-md"></div>
+                          <div className="h-3 w-32 bg-slate-200 rounded-md"></div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="h-10 w-40 bg-slate-200 rounded-2xl"></div>
+                        <div className="h-10 w-32 bg-slate-300 rounded-2xl"></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           ) : error ? (
             <div className="h-96 flex items-center justify-center font-black text-red-500 uppercase tracking-widest bg-white rounded-[2.5rem] shadow-xl">
@@ -341,7 +396,7 @@ export default function PerbaikanMahasiswaClient() {
                             ) : ( <User size={28} /> )}
                           </div>
                           <div>
-                            <p className="text-base font-black text-slate-800 uppercase tracking-tight">{penguji.nama_dosen}</p>
+                            <p className="text-base font-black text-slate-800 tracking-tight">{penguji.nama_dosen}</p>
                             <p className="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] mt-1">{formatRole(penguji.role)}</p>
                           </div>
                         </div>
@@ -389,7 +444,5 @@ export default function PerbaikanMahasiswaClient() {
           )}
 
         </div>
-      </main>
-    </div>
   );
 }

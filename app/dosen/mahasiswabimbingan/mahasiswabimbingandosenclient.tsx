@@ -1,6 +1,7 @@
 "use client";
 
-import { JSX, useEffect, useState } from "react";
+import { JSX, useState } from "react";
+import useSWR from "swr"; // 🚀 Import SWR
 import NotificationBell from '@/components/notificationBell';
 import { sendNotification } from "@/lib/notificationUtils";
 import Link from "next/link";
@@ -29,9 +30,9 @@ export interface MahasiswaBimbingan {
   uiStatusColor: string;
 }
 
-// ================= STATUS MAPPER =================
+// ================= STATUS MAPPER LOKAL =================
 
- export function mapStatusToUI(params: {
+export function mapStatusToUI(params: {
   proposalStatus: string | null;
   hasSeminar: boolean;
   seminarStatus: string | null;
@@ -42,21 +43,10 @@ export interface MahasiswaBimbingan {
 }) {
   const { proposalStatus, seminarStatus, hasSidang, verifiedDocsCount, uploadedDocsCount, isEligible } = params;
 
-  // 1. PRIORITAS TERTINGGI: Sidang
-  if (hasSidang) {
-    return { label: "Sidang Skripsi", color: "bg-emerald-100 text-emerald-700 border-emerald-200" };
-  }
-
-  // 2. PRIORITAS SEMINAR
-  if (seminarStatus === "Selesai") {
-    return { label: "Perbaikan Pasca Seminar", color: "bg-orange-100 text-orange-700 border-orange-200" };
-  }
-
-  if (verifiedDocsCount >= 3) {
-    return { label: "Seminar Hasil", color: "bg-emerald-100 text-emerald-700 border-emerald-200" };
-  }
-
-  // 3. LOGIKA TAHAP AWAL & BIMBINGAN
+  if (hasSidang) return { label: "Sidang Skripsi", color: "bg-emerald-100 text-emerald-700 border-emerald-200" };
+  if (seminarStatus === "Selesai") return { label: "Perbaikan Pasca Seminar", color: "bg-orange-100 text-orange-700 border-orange-200" };
+  if (verifiedDocsCount >= 3) return { label: "Seminar Hasil", color: "bg-emerald-100 text-emerald-700 border-emerald-200" };
+  
   if (proposalStatus === "Diterima") {
     if (isEligible) {
       if (uploadedDocsCount >= 3) return { label: "Verifikasi Berkas", color: "bg-purple-100 text-purple-700 border-purple-200" };
@@ -69,14 +59,137 @@ export interface MahasiswaBimbingan {
   return { label: proposalStatus ?? "-", color: "bg-slate-100 text-slate-600 border-slate-200" };
 }
 
+// ================= FETCHER SWR =================
+const fetchMahasiswaBimbinganDosen = async () => {
+  const { data: session } = await supabase.auth.getSession();
+  const uid = session?.session?.user?.id;
+  if (!uid) throw new Error("Not authenticated");
+
+  const { data: profile } = await supabase.from("profiles").select("nama").eq("id", uid).single();
+  const dosenName = profile?.nama || "";
+
+  const { data, error } = await supabase
+    .from("thesis_supervisors")
+    .select(`
+      status,
+      proposal:proposals (
+        id, status, status_lulus,
+        mahasiswa:profiles ( nama, npm, avatar_url ),
+        seminar:seminar_requests ( status, approved_by_p1, approved_by_p2, created_at, examiners(dosen_id), seminar_feedbacks(status_revisi) ),
+        sidang:sidang_requests ( id, status ),
+        docs:seminar_documents ( status ),
+        supervisors:thesis_supervisors ( role, dosen_id ),
+        sessions:guidance_sessions ( dosen_id, kehadiran_mahasiswa, session_feedbacks ( status_revisi ) )
+      )
+    `)
+    .eq("dosen_id", uid)
+    .eq("status", "accepted"); 
+
+  if (error) throw error;
+
+  const mapped: MahasiswaBimbingan[] = [];
+
+  (data || []).forEach((row: any) => {
+    const p = row.proposal;
+    if (!p) return;
+
+    if (p.status_lulus === true || p.status === "Lulus") return;
+
+    const inactiveStatuses = [
+      "Pending", "Pengajuan Proposal", "Ditinjau Kaprodi", 
+      "Menunggu Persetujuan Dosbing", "Ditolak Dosbing", "Ditolak", "Siap Ditetapkan"
+    ];
+    if (inactiveStatuses.includes(p.status)) return; 
+    
+    const activeSeminar = p.seminar?.sort((a: any, b: any) => 
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    )[0] || null;
+    
+    const hasSidang = Array.isArray(p.sidang) && p.sidang.length > 0;
+    const docs = p.docs || [];
+    const verifiedCount = docs.filter((d: any) => d.status === 'Lengkap').length;
+
+    let p1Count = 0;
+    let p2Count = 0;
+    p.supervisors?.forEach((sp: any) => {
+      const count = p.sessions?.filter((s: any) => 
+        s.dosen_id === sp.dosen_id && 
+        s.kehadiran_mahasiswa === 'hadir' &&
+        (s.session_feedbacks?.[0]?.status_revisi === "disetujui" || s.session_feedbacks?.[0]?.status_revisi === "revisi")
+      ).length || 0;
+
+      if (sp.role === "utama") p1Count = count;
+      else if (sp.role === "pendamping") p2Count = count;
+    });
+
+    const approvedByAll = !!activeSeminar?.approved_by_p1 && !!activeSeminar?.approved_by_p2;
+    const isEligible = p1Count >= 10 && p2Count >= 10 && approvedByAll;
+
+    const ui = mapStatusToUI({ 
+      proposalStatus: p.status, 
+      hasSeminar: !!activeSeminar,
+      seminarStatus: activeSeminar?.status,
+      hasSidang: hasSidang,
+      verifiedDocsCount: verifiedCount,
+      uploadedDocsCount: docs.length,
+      isEligible: isEligible
+    });
+
+    let finalTahap = ui.label;
+
+    if (activeSeminar) {
+      const fbs = activeSeminar.seminar_feedbacks || [];
+      const exms = activeSeminar.examiners || [];
+      const totalDosen = exms.length + (p.supervisors?.length || 0);
+      const totalAcc = fbs.filter((f: any) => f.status_revisi === 'diterima').length;
+      
+      const hasFeedback = fbs.length > 0;
+      const isAllRevisiAcc = totalDosen > 0 && totalAcc >= totalDosen;
+
+      if (activeSeminar.status === 'Selesai' || hasFeedback) {
+        finalTahap = "Perbaikan Pasca Seminar"; 
+        if (isAllRevisiAcc) finalTahap = "Pendaftaran Sidang Akhir";
+      }
+    }
+
+    if (hasSidang) {
+         const sidangStatus = p.sidang[0]?.status?.toLowerCase();
+         if (sidangStatus === "lulus") finalTahap = "Lulus";
+         else if (sidangStatus === "menunggu_penjadwalan" || sidangStatus === "pending") finalTahap = "Pendaftaran Sidang Skripsi";
+         else finalTahap = "Sidang Skripsi";
+    }
+
+    mapped.push({
+      proposal_id: p.id,
+      nama: p.mahasiswa.nama,
+      npm: p.mahasiswa.npm,
+      avatar_url: p.mahasiswa.avatar_url || null,
+      uiStatusLabel: finalTahap,
+      uiStatusColor: ui.color,
+    });
+  });
+
+  return { dosenId: uid, dosenName, students: mapped };
+};
+
+
 // ================= PAGE =================
 
 export default function MahasiswaBimbinganDosenClient() {
-  // Data
-  const [students, setStudents] = useState<MahasiswaBimbingan[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [dosenId, setDosenId] = useState<string | null>(null);
-  const [dosenName, setDosenName] = useState("");
+  // 🔥 IMPLEMENTASI SWR 🔥
+  const { data, isLoading, mutate } = useSWR(
+    'mahasiswa_bimbingan_dosen_list',
+    fetchMahasiswaBimbinganDosen,
+    {
+      revalidateOnFocus: true,
+      refreshInterval: 60000 
+    }
+  );
+
+  // Extract Cache
+  const students = data?.students || [];
+  const dosenId = data?.dosenId || null;
+  const dosenName = data?.dosenName || "";
 
   // Form state
   const [metode, setMetode] = useState("Luring");
@@ -89,117 +202,25 @@ export default function MahasiswaBimbinganDosenClient() {
   const [keterangan, setketerangan] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // ================= FETCH LOGIC (DEEP SINKRONISASI & ANTI LEAK) =================
-
-  const fetchMahasiswaBimbingan = async () => {
-    try {
-      setLoading(true);
-      const { data: session } = await supabase.auth.getSession();
-      const uid = session?.session?.user?.id;
-      if (!uid) return;
-      setDosenId(uid);
-
-      const { data: profile } = await supabase.from("profiles").select("nama").eq("id", uid).single();
-      if (profile) setDosenName(profile.nama);
-
-      // Ambil relasi lengkap agar status sinkron dengan Tendik/Kaprodi
-      const { data, error } = await supabase
-        .from("thesis_supervisors")
-        .select(`
-          status,
-          proposal:proposals (
-            id, status,
-            mahasiswa:profiles ( nama, npm, avatar_url ),
-            seminar:seminar_requests ( status, approved_by_p1, approved_by_p2, created_at ),
-            sidang:sidang_requests ( id ),
-            docs:seminar_documents ( status ),
-            supervisors:thesis_supervisors ( role, dosen_id ),
-            sessions:guidance_sessions ( dosen_id, kehadiran_mahasiswa, session_feedbacks ( status_revisi ) )
-          )
-        `)
-        .eq("dosen_id", uid)
-        .eq("status", "accepted"); // Pastikan hanya ambil yang dosen sudah ACC
-
-      if (error) throw error;
-
-      const mapped: MahasiswaBimbingan[] = [];
-
-      (data || []).forEach((row: any) => {
-        const p = row.proposal;
-
-        // 🔥 PROTEKSI ANTI-LEAK: Jangan proses jika Kaprodi belum menetapkan!
-        const inactiveStatuses = [
-          "Pending", "Pengajuan Proposal", "Ditinjau Kaprodi", 
-          "Menunggu Persetujuan Dosbing", "Ditolak Dosbing", "Ditolak", "Siap Ditetapkan"
-        ];
-        
-        if (!p || inactiveStatuses.includes(p.status)) {
-          return; // Skip iterasi ini, jangan masukkan ke daftar "students"
-        }
-        
-        // A. Ambil Seminar Request Terbaru
-        const activeSeminar = p.seminar?.sort((a: any, b: any) => 
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        )[0] || null;
-        
-        // B. Cek Sidang
-        const hasSidang = Array.isArray(p.sidang) && p.sidang.length > 0;
-
-        // C. Hitung Berkas Tervalidasi Tendik
-        const docs = p.docs || [];
-        const verifiedCount = docs.filter((d: any) => d.status === 'Lengkap').length;
-
-        // D. Hitung Bimbingan P1 & P2
-        let p1Count = 0;
-        let p2Count = 0;
-        p.supervisors?.forEach((sp: any) => {
-          const count = p.sessions?.filter((s: any) => 
-            s.dosen_id === sp.dosen_id && 
-            s.kehadiran_mahasiswa === 'hadir' &&
-            s.session_feedbacks?.[0]?.status_revisi === "disetujui"
-          ).length || 0;
-
-          if (sp.role === "utama") p1Count = count;
-          else if (sp.role === "pendamping") p2Count = count;
-        });
-
-        // E. Tentukan Kelayakan (isEligible)
-        const approvedByAll = !!activeSeminar?.approved_by_p1 && !!activeSeminar?.approved_by_p2;
-        const isEligible = p1Count >= 10 && p2Count >= 10 && approvedByAll;
-
-        const ui = mapStatusToUI({ 
-          proposalStatus: p.status, 
-          hasSeminar: !!activeSeminar,
-          seminarStatus: activeSeminar?.status,
-          hasSidang: hasSidang,
-          verifiedDocsCount: verifiedCount,
-          uploadedDocsCount: docs.length,
-          isEligible: isEligible
-        });
-
-        mapped.push({
-          proposal_id: p.id,
-          nama: p.mahasiswa.nama,
-          npm: p.mahasiswa.npm,
-          avatar_url: p.mahasiswa.avatar_url || null,
-          uiStatusLabel: ui.label,
-          uiStatusColor: ui.color,
-        });
-      });
-
-      setStudents(mapped);
-    } catch (err) {
-      console.error("❌ Gagal load data bimbingan:", err);
-    } finally {
-      setLoading(false);
+  // ================= HELPER WARNA BADGE =================
+  const getStatusBadgeStyle = (status: string) => {
+    switch (status) {
+      case "Pengajuan Proposal": return "bg-amber-100 text-amber-700 border-amber-200"; 
+      case "Proses Bimbingan": return "bg-indigo-100 text-indigo-700 border-indigo-200"; 
+      case "Persetujuan Seminar": return "bg-purple-100 text-purple-700 border-purple-200"; 
+      case "Unggah Dokumen Seminar": return "bg-green-100 text-green-700 border-green-200";
+      case "Verifikasi Berkas": return "bg-blue-100 text-blue-700 border-blue-200";
+      case "Seminar Hasil": return "bg-green-100 text-green-700 border-green-200";
+      case "Perbaikan Pasca Seminar": return "bg-orange-100 text-orange-700 border-orange-200"; 
+      case "Pendaftaran Sidang Akhir":
+      case "Pendaftaran Sidang Skripsi": return "bg-yellow-100 text-yellow-700 border-yellow-200";
+      case "Sidang Skripsi":
+      case "Lulus": return "bg-emerald-100 text-emerald-700 border-emerald-200"; 
+      default: return "bg-slate-100 text-slate-600 border-slate-200";
     }
   };
 
-  useEffect(() => { fetchMahasiswaBimbingan(); }, []);
-
-
   // ================= CALENDAR LOGIC =================
-
   const year = currentMonth.getFullYear();
   const month = currentMonth.getMonth();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -214,9 +235,6 @@ export default function MahasiswaBimbinganDosenClient() {
 
   const renderCalendarDays = () => {
     const days: JSX.Element[] = [];
-    
-    // Sesuaikan index hari pertama (Standard JS 0=Minggu, Kalender kita mulai dari Senin)
-    // Jika firstDayIndex = 0 (Minggu), ubah jadi 6 agar berada di akhir baris
     const adjustedFirstDay = firstDayIndex === 0 ? 6 : firstDayIndex - 1;
 
     for (let i = 0; i < adjustedFirstDay; i++) { 
@@ -246,14 +264,14 @@ export default function MahasiswaBimbinganDosenClient() {
     return days;
   };
 
- 
-const formatDateInput = () => {
-  if (!selectedDate) return "";
-  const y = selectedDate.getFullYear();
-  const m = (selectedDate.getMonth() + 1).toString().padStart(2, '0');
-  const d = selectedDate.getDate().toString().padStart(2, '0');
-  return `${y}-${m}-${d}`;
-};
+  const formatDateInput = () => {
+    if (!selectedDate) return "";
+    const y = selectedDate.getFullYear();
+    const m = (selectedDate.getMonth() + 1).toString().padStart(2, '0');
+    const d = selectedDate.getDate().toString().padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
   const buildTime24 = () => {
     let h = parseInt(hour, 10);
     if (period === "PM" && h !== 12) h += 12;
@@ -261,7 +279,7 @@ const formatDateInput = () => {
     return `${h.toString().padStart(2, "0")}:${minute}:00`;
   };
 
- const handleApplySchedule = async () => {
+  const handleApplySchedule = async () => {
     try {
       if (!dosenId || !selectedDate || students.length === 0) {
         alert("Mohon lengkapi data jadwal dan mahasiswa.");
@@ -286,21 +304,12 @@ const formatDateInput = () => {
       const { error } = await supabase.from("guidance_sessions").insert(payload);
       if (error) throw error;
 
-      // 🔥 2. KIRIM NOTIFIKASI MASSAL KE SETIAP MAHASISWA
-      const tglFormat = selectedDate.toLocaleDateString("id-ID", { 
-        day: "numeric", month: "long", year: "numeric" 
-      });
+      // 2. Kirim Notifikasi
+      const tglFormat = selectedDate.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
 
       const notificationPromises = students.map(async (mhs) => {
-        // Ambil user_id mahasiswa berdasarkan proposal_id
-        const { data: prop } = await supabase
-          .from("proposals")
-          .select("user_id")
-          .eq("id", mhs.proposal_id)
-          .single();
-
+        const { data: prop } = await supabase.from("proposals").select("user_id").eq("id", mhs.proposal_id).single();
         if (prop?.user_id) {
-          // Kirim pesan spesifik berisi Nama Dosen dan Nomor Sesi
           return sendNotification(
             prop.user_id,
             "Jadwal Bimbingan Baru",
@@ -309,10 +318,10 @@ const formatDateInput = () => {
         }
       });
 
-      // Jalankan semua pengiriman secara paralel untuk kecepatan
       await Promise.all(notificationPromises);
 
       alert(`✅ Jadwal bimbingan Sesi ${sesi} berhasil diterapkan dan notifikasi terkirim!`);
+      mutate(); // Refresh State SWR
     } catch (err) {
       console.error(err);
       alert("Gagal menyimpan jadwal bimbingan");
@@ -322,9 +331,8 @@ const formatDateInput = () => {
   };
   
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-[#F4F7FE] font-sans text-slate-700">
+    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-[#F8F9FB] font-sans text-slate-700">
       
-      {/* MAIN */}
       <main className="flex-1 p-10 max-w-[1400px] mx-auto w-full">
         
         <div className="mb-10">
@@ -355,17 +363,33 @@ const formatDateInput = () => {
                   <tr className="bg-slate-50/50 text-[11px] uppercase tracking-[0.15em] text-slate-400 font-black border-b border-slate-100">
                     <th className="px-8 py-6">Mahasiswa</th>
                     <th className="px-8 py-6 text-center">Progres Skripsi</th>
-                    <th className="px-8 py-6 text-center">Tindakan</th>
+                    <th className="px-8 py-6 text-center">Aksi</th>
                   </tr>
                 </thead>
 
                 <tbody className="divide-y divide-slate-50">
-                  {loading ? (
-                    <tr>
-                      <td colSpan={3} className="px-8 py-20 text-center text-slate-400 font-bold animate-pulse">
-                        Menghubungkan ke database...
-                      </td>
-                    </tr>
+                  {isLoading ? (
+                    <>
+                      {[1, 2, 3, 4, 5].map((item) => (
+                        <tr key={item} className="animate-pulse">
+                          <td className="px-8 py-8">
+                            <div className="flex items-center gap-4">
+                              <div className="w-10 h-10 rounded-xl bg-slate-200 shrink-0"></div>
+                              <div className="flex flex-col gap-2 w-full">
+                                <div className="h-3 w-40 bg-slate-200 rounded-full"></div>
+                                <div className="h-2 w-20 bg-slate-50 rounded-full"></div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-8 py-8 text-center">
+                            <div className="h-7 w-28 bg-slate-200 rounded-full mx-auto"></div>
+                          </td>
+                          <td className="px-8 py-8 text-center">
+                            <div className="h-9 w-24 bg-slate-200 rounded-xl mx-auto"></div>
+                          </td>
+                        </tr>
+                      ))}
+                    </>
                   ) : students.length === 0 ? (
                     <tr>
                       <td colSpan={3} className="px-8 py-24 text-center">
@@ -380,8 +404,7 @@ const formatDateInput = () => {
                       <tr key={mhs.proposal_id} className="group hover:bg-blue-50/30 transition-all duration-300">
                         <td className="px-8 py-8">
                           <div className="flex items-center gap-4">
-                            {/* 🔥 LOGIKA RENDER AVATAR / INISIAL MAHASISWA */}
-                            <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-black group-hover:bg-blue-600 group-hover:text-white transition-all uppercase relative overflow-hidden shrink-0 border border-slate-200">
+                            <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-black group-hover:bg-blue-600 group-hover:text-white transition-all relative overflow-hidden shrink-0 border border-slate-200 uppercase">
                               {mhs.avatar_url ? (
                                 <Image 
                                   src={mhs.avatar_url} 
@@ -393,26 +416,27 @@ const formatDateInput = () => {
                                 mhs.nama.charAt(0)
                               )}
                             </div>
+
                             <div>
-                              <p className="text-sm font-black text-slate-800 leading-none uppercase tracking-tight">{mhs.nama}</p>
-                              <p className="text-[10px] text-slate-400 font-black tracking-widest mt-2">{mhs.npm}</p>
+                              <p className="text-sm font-black text-slate-800 leading-none tracking-tight">{mhs.nama}</p>
+                              <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1.5">{mhs.npm}</p>
                             </div>
                           </div>
                         </td>
 
                         <td className="px-8 py-8 text-center">
-                          <span className={`inline-block px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border shadow-sm ${mhs.uiStatusColor}`}>
+                          <span className={`inline-block px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border shadow-sm ${getStatusBadgeStyle(mhs.uiStatusLabel)}`}>
                             {mhs.uiStatusLabel}
                           </span>
                         </td>
 
                         <td className="px-8 py-8 text-center">
-                          <Link
-                            href={`/dosen/detailmahasiswabimbingan?id=${mhs.proposal_id}`}
-                            className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-blue-600 text-white text-[10px] font-black rounded-xl transition-all shadow-lg active:scale-95 uppercase tracking-widest"
-                          >
-                            Detail <ArrowRight size={14} />
-                          </Link>
+                         <Link
+                           href={`/dosen/detailmahasiswabimbingan?id=${mhs.proposal_id}`}
+                           className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-blue-600 text-white text-[10px] font-black rounded-xl transition-all shadow-lg active:scale-95 uppercase tracking-widest"
+                         >
+                           Detail <ArrowRight size={14} />
+                         </Link>
                         </td>
                       </tr>
                     ))
@@ -463,7 +487,7 @@ const formatDateInput = () => {
                   <div className="grid grid-cols-2 gap-3">
                     <div className="relative">
                       <CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                      <input type="date" value={formatDateInput()} readOnly className="w-full pl-9 pr-3 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none" />
+                      <input type="date" value={formatDateInput()} readOnly className="w-full pl-9 pr-3 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none cursor-default" />
                     </div>
                     <div className="flex gap-1">
                       <select value={hour} onChange={(e) => setHour(e.target.value)} className="flex-1 px-1 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none appearance-none text-center cursor-pointer">

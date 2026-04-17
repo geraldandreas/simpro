@@ -1,8 +1,6 @@
 "use client";
 
 import useSWR from "swr"; 
-import Sidebar from "@/components/sidebar";
-import NotificationBell from '@/components/notificationBell';
 import { supabase } from "@/lib/supabaseClient";
 import {
   Calendar,
@@ -94,31 +92,41 @@ export default function JadwalMahasiswaClient() {
   };
 
   return (
-    <div className="flex min-h-screen bg-[#F4F7FE] font-sans text-slate-700">
-      <Sidebar />
-
-      <main className="flex-1 ml-64 flex flex-col h-screen overflow-y-auto custom-scrollbar uppercase tracking-tighter">
-        <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
-          <div className="flex items-center gap-6"><div className="relative w-72 group"></div></div>
-          <div className="flex items-center gap-6">
-            <NotificationBell />
-            <div className="h-8 w-[1px] bg-slate-200 mx-2" />
-            <div className="flex items-center gap-6">
-              <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">Simpro</span>
-            </div>
+        <div className="p-10 max-w-[1400px] mx-auto">
+          <div className="mb-10">
+            <h1 className="text-3xl font-black text-slate-800 tracking-tight">Jadwal Seminar & Sidang</h1>
+            <p className="text-slate-500 mt-2 font-medium">Status penjadwalan akademik Anda secara real-time.</p>
           </div>
-        </header>
-
-        <div className="p-10 max-w-7xl mx-auto w-full">
-          <header className="mb-10">
-            <h1 className="text-3xl font-black text-slate-800 tracking-tight leading-none uppercase">Jadwal Seminar & Sidang</h1>
-            <p className="text-slate-500 font-medium mt-3 tracking-normal normal-case font-serif">Status penjadwalan akademik Anda secara real-time.</p>
-          </header>
 
           {isLoading && !data ? (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 animate-pulse">
-              <div className="lg:col-span-7 bg-slate-200 h-64 rounded-[2.5rem]"></div>
-              <div className="lg:col-span-5 bg-slate-200 h-64 rounded-[2.5rem]"></div>
+              
+              {/* SKELETON CARD SEMINAR YANG LEBIH DETAIL */}
+              <div className="lg:col-span-7 bg-white p-10 rounded-[2.5rem] border border-white shadow-xl shadow-slate-200/50">
+                <div className="flex items-center gap-4 mb-8">
+                  <div className="w-12 h-12 bg-slate-200 rounded-2xl"></div>
+                  <div className="h-6 w-48 bg-slate-200 rounded-lg"></div>
+                </div>
+                <div className="flex gap-4">
+                  <div className="h-24 flex-1 bg-slate-100 rounded-2xl"></div>
+                  <div className="h-24 flex-1 bg-slate-100 rounded-2xl"></div>
+                  <div className="h-24 flex-1 bg-slate-100 rounded-2xl"></div>
+                </div>
+              </div>
+
+              {/* SKELETON CARD SIDANG YANG LEBIH DETAIL */}
+              <div className="lg:col-span-5 bg-white p-10 rounded-[2.5rem] border border-white shadow-xl shadow-slate-200/50">
+                <div className="flex items-center gap-4 mb-8">
+                  <div className="w-12 h-12 bg-slate-200 rounded-2xl"></div>
+                  <div className="h-6 w-32 bg-slate-200 rounded-lg"></div>
+                </div>
+                <div className="space-y-4">
+                  <div className="h-10 w-full bg-slate-100 rounded-xl"></div>
+                  <div className="h-10 w-full bg-slate-100 rounded-xl"></div>
+                  <div className="h-10 w-full bg-slate-100 rounded-xl"></div>
+                </div>
+              </div>
+              
             </div>
           ) : error ? (
              <div className="p-10 text-center font-black text-red-500 uppercase tracking-widest">Gagal memuat data jadwal.</div>
@@ -204,8 +212,6 @@ export default function JadwalMahasiswaClient() {
             </div>
           )}
         </div>
-      </main>
-    </div>
   );
 }
 

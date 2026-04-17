@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image"; // 🔥 Import Image dari Next.js
+import Image from "next/image"; 
 import { usePathname, useRouter } from "next/navigation";
+import { useEffect } from "react";
+import useSWR, { mutate } from "swr"; // 🔥 Import SWR
 import {
   LayoutDashboard,
   Users,
@@ -11,56 +13,77 @@ import {
   FileCheck,
   FileText,
   Settings,
-  HelpCircle,
+  GraduationCap,
   LogOut,
   PieChart,
   Megaphone,
   CalendarCheck,
-  Scale, // 🔥 Tambahan Icon Scale untuk Monitoring Penguji
+  Scale,
+  CalendarClock, 
 } from "lucide-react";
-import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+
+// ================= FETCHER SWR =================
+const fetchKaprodiProfile = async () => {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not logged in");
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("nama, avatar_url") 
+    .eq("id", user.id)
+    .single();
+
+  return {
+    nama: profile?.nama || "Kaprodi",
+    avatar_url: profile?.avatar_url || null,
+  };
+};
 
 export default function SidebarKaprodi() {
   const pathname = usePathname();
   const router = useRouter();
 
-  const [nama, setNama] = useState<string>("");
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null); // 🔥 State baru untuk avatar
+  // 🔥 IMPLEMENTASI SWR 🔥
+  const { data } = useSWR('sidebar_kaprodi_profile', fetchKaprodiProfile, {
+    revalidateOnFocus: false,
+  });
+
+  const nama = data?.nama || "Loading...";
+  const avatarUrl = data?.avatar_url || null;
 
   const menuItems = [
     { icon: LayoutDashboard, label: "Dashboard", href: "/kaprodi/dashboardkaprodi" },
-    { icon: Users, label: "Mahasiswa Bimbingan", href: "/kaprodi/dashboardkaprodi/mahasiswabimbingan" },
-    { icon: FolderOpen, label: "Akses Proposal", href: "/kaprodi/dashboardkaprodi/aksesproposal" },
-    { icon: PieChart, label: "Monitoring Bursa", href: "/kaprodi/dashboardkaprodi/manajemenbursa" },
-    { icon: Scale, label: "Monitoring Penguji", href: "/kaprodi/dashboardkaprodi/monitoringpenguji" }, // 🔥 Menu Tambahan Baru
-    { icon: BarChart2, label: "Progres Semua Mahasiswa", href: "/kaprodi/dashboardkaprodi/progressemuamahasiswa" },
-    { icon: FileCheck, label: "Pengajuan Seminar", href: "/kaprodi/dashboardkaprodi/pengajuanseminar" },
-    { icon: FileText, label: "Pengajuan Sidang", href: "/kaprodi/dashboardkaprodi/pengajuansidang" },
-    { icon: Megaphone, label: "Pengumuman", href: "/kaprodi/dashboardkaprodi/pengumuman" },
-    { icon: CalendarCheck, label: "Jadwal Penguji Seminar", href: "/kaprodi/dashboardkaprodi/jadwalpengujiseminar" },
-    { icon: FileCheck, label: "Perbaikan Seminar", href: "/kaprodi/dashboardkaprodi/perbaikanseminar" }, 
+    { icon: Users, label: "Mahasiswa Bimbingan", href: "/kaprodi/mahasiswabimbingan" },
+    { icon: FolderOpen, label: "Akses Proposal", href: "/kaprodi/aksesproposal" },
+    { icon: PieChart, label: "Monitoring Bursa", href: "/kaprodi/manajemenbursa" },
+    { icon: Scale, label: "Monitoring Penguji", href: "/kaprodi/monitoringpenguji" }, 
+    { icon: BarChart2, label: "Progres Semua Mahasiswa", href: "/kaprodi/progressemuamahasiswa" },
+    { icon: FileCheck, label: "Pengajuan Seminar", href: "/kaprodi/pengajuanseminar" },
+    { icon: FileText, label: "Pengajuan Sidang", href: "/kaprodi/pengajuansidang" },
+    { icon: Megaphone, label: "Pengumuman", href: "/kaprodi/pengumuman" },
+    { icon: CalendarCheck, label: "Jadwal Menguji Seminar", href: "/kaprodi/jadwalpengujiseminar" },
+    { icon: FileCheck, label: "Perbaikan Seminar", href: "/kaprodi/perbaikanseminar" }, 
+    { icon: CalendarClock, label: "Jadwal Menguji Sidang", href: "/kaprodi/jadwalpengujisidang" },
+    { icon: GraduationCap, label: "Verifikasi Lulus", href: "/kaprodi/verifikasilulus" },
   ];
 
-  // ================= FETCH PROFILE =================
+  // ================= REALTIME LISTENER =================
   useEffect(() => {
-    const loadProfile = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+    const channel = supabase
+      .channel("profile-changes-kaprodi")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "profiles" },
+        () => {
+          mutate('sidebar_kaprodi_profile'); // Auto update jika ganti avatar/nama di settings
+        }
+      )
+      .subscribe();
 
-      const { data } = await supabase
-        .from("profiles")
-        .select("nama, avatar_url") // 🔥 Tambahkan avatar_url di select query
-        .eq("id", user.id)
-        .single();
-
-      if (data) {
-        if (data.nama) setNama(data.nama);
-        if (data.avatar_url) setAvatarUrl(data.avatar_url); // 🔥 Set state avatar
-      }
+    return () => {
+      supabase.removeChannel(channel);
     };
-
-    loadProfile();
   }, []);
 
   // ================= LOGOUT =================
@@ -71,7 +94,7 @@ export default function SidebarKaprodi() {
 
   // ================= ACTIVE CLASS =================
   const isActive = (href: string) =>
-    pathname === href
+    pathname === href || pathname.startsWith(`${href}/`)
       ? "bg-blue-50 text-blue-700 font-semibold"
       : "text-gray-400 hover:bg-gray-50";
 
@@ -89,12 +112,12 @@ export default function SidebarKaprodi() {
                 objectFit="cover" 
               />
             ) : (
-              nama ? nama.charAt(0).toUpperCase() : "K"
+              nama !== "Loading..." ? nama.charAt(0).toUpperCase() : "K"
             )}
           </div>
           <div className="min-w-0">
             <h3 className="text-sm font-bold text-gray-900 truncate">
-              {nama || "Kaprodi"}
+              {nama}
             </h3>
             <p className="text-xs text-blue-600 font-medium capitalize">
               Kaprodi
@@ -112,8 +135,8 @@ export default function SidebarKaprodi() {
         {menuItems.map((item) => (
           <Link key={item.href} href={item.href}>
             <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition ${isActive(item.href)}`}>
-              <item.icon size={18} />
-              <span>{item.label}</span>
+              <item.icon size={18} className="shrink-0" />
+              <span className="leading-tight">{item.label}</span>
             </div>
           </Link>
         ))}
@@ -126,29 +149,41 @@ export default function SidebarKaprodi() {
 
           <Link href="/settings">
             <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition ${isActive("/settings")}`}>
-              <Settings size={18} />
+              <Settings size={18} className="shrink-0" />
               <span>Settings</span>
-            </div>
-          </Link>
-
-          <Link href="/kaprodi/dashboardkaprodi/help">
-            <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition ${isActive("/kaprodi/dashboardkaprodi/help")}`}>
-              <HelpCircle size={18} />
-              <span>Help</span>
             </div>
           </Link>
         </div>
       </nav>
 
       {/* ================= LOGOUT ================= */}
-      <div className="p-6 border-t border-gray-100 flex items-center gap-3 text-gray-400 bg-white">
-        <button 
+      <div className="p-6 mt-auto bg-white">
+        <button
           onClick={handleLogout}
-          className="hover:bg-red-50 p-2 rounded-lg transition-colors group"
+          className="
+            w-full flex items-center gap-3 px-4 py-3
+            rounded-xl text-gray-500 font-medium
+            hover:bg-red-50 hover:text-red-600
+            transition-all group
+          "
         >
-          <LogOut size={20} className="rotate-180 group-hover:text-red-500 transition-colors" />
+          <div
+            className="
+              w-9 h-9 flex items-center justify-center
+              rounded-lg border border-gray-200
+              text-gray-400
+              group-hover:border-red-200
+              group-hover:text-red-600
+              transition-all shrink-0
+            "
+          >
+            <LogOut size={18} className="rotate-180" />
+          </div>
+
+          <span className="text-sm">Log out</span>
         </button>
-        <span className="font-medium text-xs">V.1.0.0</span>
+
+        <p className="text-xs text-gray-400 mt-3 ml-12">V.1.0.0</p>
       </div>
     </aside>
   );

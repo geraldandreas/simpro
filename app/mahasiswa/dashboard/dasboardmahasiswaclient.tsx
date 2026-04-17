@@ -1,8 +1,6 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import Sidebar from '@/components/sidebar';
-import NotificationBell from '@/components/notificationBell';
 import { supabase } from '@/lib/supabaseClient';
 import { useRouter } from "next/navigation";
 import Image from "next/image"; 
@@ -44,7 +42,7 @@ const fetcher = async () => {
 
   const { data: proposal } = await supabase
     .from("proposals")
-    .select("id, status")
+    .select("id, status, status_lulus")
     .eq("user_id", userId)
     .maybeSingle();
 
@@ -65,7 +63,9 @@ const fetcher = async () => {
   ]);
 
   let isAllRevisiAcc = false;
-  if (seminarReq?.status === 'Selesai') {
+  let hasFeedback = false; 
+
+  if (seminarReq) {
     const [ { data: exms }, { data: fbs } ] = await Promise.all([
       supabase.from('examiners').select('dosen_id').eq('seminar_request_id', seminarReq.id),
       supabase.from('seminar_feedbacks').select('status_revisi').eq('seminar_request_id', seminarReq.id)
@@ -73,6 +73,10 @@ const fetcher = async () => {
     
     const totalDosen = (exms?.length || 0) + (supervisorData?.length || 0);
     const totalAcc = fbs?.filter((f: any) => f.status_revisi === 'diterima').length || 0;
+    
+    if (fbs && fbs.length > 0) {
+      hasFeedback = true;
+    }
     
     if (totalDosen > 0 && totalAcc >= totalDosen) {
       isAllRevisiAcc = true;
@@ -87,7 +91,8 @@ const fetcher = async () => {
     docs,
     sessions,
     supervisorData,
-    isAllRevisiAcc 
+    isAllRevisiAcc,
+    hasFeedback 
   };
 };
 
@@ -120,7 +125,13 @@ const DashboardMahasiswa: React.FC = () => {
     
     let p1Count = 0, p2Count = 0;
     data?.supervisorData?.forEach((sp: any) => {
-      const count = data?.sessions?.filter(s => s.dosen_id === sp.profiles.id && s.session_feedbacks?.[0]?.status_revisi !== 'revisi').length || 0;
+      const count = data?.sessions?.filter((s: any) => {
+        if (s.dosen_id !== sp.profiles.id) return false;
+        
+        const latestStatus = s.session_feedbacks?.[0]?.status_revisi;
+        return latestStatus === 'disetujui' || latestStatus === 'revisi'; 
+      }).length || 0;
+
       if (sp.role === 'utama' || sp.role === 'pembimbing1') p1Count = count;
       else p2Count = count;
     });
@@ -128,7 +139,11 @@ const DashboardMahasiswa: React.FC = () => {
     const approvedByAll = data?.seminarReq?.approved_by_p1 && data?.seminarReq?.approved_by_p2;
     const eligible = p1Count >= 10 && p2Count >= 10 && approvedByAll;
 
-    if (prop.status === "Lulus") {
+    const hasSeminar = !!data?.seminarReq;
+    const seminarStatus = data?.seminarReq?.status;
+
+    // 🔥 PERBAIKAN LOGIKA LINIMASA SKRIPSI 🔥
+    if (prop.status_lulus === true || prop.status === "Lulus") {
       activeStep = 9; 
       isEligible = true;
     } else if (prop.status === "Menunggu Persetujuan Dosbing") {
@@ -136,26 +151,32 @@ const DashboardMahasiswa: React.FC = () => {
     } else if (prop.status === "Diterima") {
       activeStep = 2; 
       if (eligible) {
-        activeStep = 3; 
-        if (uploadedDocsCount > 0) activeStep = 4; 
-        if (uploadedDocsCount >= 3) activeStep = 5; 
-        if (verifiedDocsCount >= 3) activeStep = 6; 
+        activeStep = 3; // Kesiapan Seminar
         
-        if (data?.seminarReq?.status === "Selesai") {
-          activeStep = 7; 
-          if (data.isAllRevisiAcc) activeStep = 8; 
+        if (uploadedDocsCount > 0) activeStep = 4; // Upload Dokumen
+        
+        if (verifiedDocsCount > 0 || uploadedDocsCount >= 4) activeStep = 5; // Verifikasi Tendik
+        
+        if (hasSeminar && (seminarStatus === "Disetujui" || seminarStatus === "Dijadwalkan" || seminarStatus === "Selesai")) {
+          activeStep = 6; // Seminar
+        }
+        
+        if (seminarStatus === "Selesai" || data?.hasFeedback) {
+          activeStep = 7; // 🔥 PERBAIKAN: Tahan di tahap 7 (Perbaikan Seminar)
         }
 
+        // 🔥 PINDAH KE SIDANG (8) HANYA JIKA STATUSNYA SUDAH DIJADWALKAN OLEH KAPRODI 🔥
         if (data?.sidangReq) {
-          activeStep = 8; 
-          if (data.sidangReq.status === "Lulus" || data.sidangReq.status === "Selesai") {
-            activeStep = 9; 
+          const sStatus = data.sidangReq.status?.toLowerCase().replace(/\s/g, '_');
+          // Jika statusnya masih menunggu_penjadwalan, abaikan (tetap di step 7)
+          if (sStatus === "dijadwalkan" || sStatus === "disetujui" || sStatus === "selesai") {
+            activeStep = 8; // Barulah pindah ke Sidang
           }
         }
       }
     }
 
-    isEligible = activeStep === 9 ? true : !!eligible;
+    isEligible = activeStep >= 8 ? true : !!eligible;
     bimbinganCount = { p1: p1Count, p2: p2Count };
     isAccDosen = !!approvedByAll;
 
@@ -186,27 +207,23 @@ const DashboardMahasiswa: React.FC = () => {
 
   const docPercentage = Math.round((stats.docs / 4) * 100);
   
+  // 🔥 KALKULASI PROGRESS BAR 🔥
   const totalSteps = 10; 
   const stepWidth = 100 / (totalSteps - 1);
-  const greenWidth = activeStep >= 2 ? (activeStep - 1) * stepWidth : activeStep * stepWidth;
-  const blueWidth = activeStep >= 2 ? stepWidth : 0;
+  
+  let greenWidth = 0;
+  let blueWidth = 0;
+
+  if (activeStep >= 9) {
+    greenWidth = 100;
+  } else {
+    greenWidth = activeStep >= 2 ? (activeStep - 1) * stepWidth : activeStep * stepWidth;
+    blueWidth = activeStep >= 2 ? stepWidth : 0;
+  }
 
   return (
-    <div className="flex min-h-screen bg-[#F3F4F6] font-sans text-slate-700">
-      <Sidebar />
-      <main className="flex-1 ml-64 flex flex-col h-screen overflow-hidden">
-       <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
-          <div className="flex items-center gap-6"></div>
-          <div className="flex items-center gap-6">
-            <NotificationBell />
-            <div className="h-8 w-[1px] bg-slate-200 mx-2" />
-            <div className="flex items-center gap-6">
-              <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">
-                Simpro
-              </span>
-            </div>
-          </div>
-        </header>
+    <div className="flex min-h-screen bg-[#F8F9FB] font-sans text-slate-700">
+      <main className="flex-1 flex flex-col h-screen overflow-hidden">
 
         <div className="flex-1 overflow-y-auto p-10 custom-scrollbar">
           <div className="max-w-[1400px] mx-auto">
@@ -246,7 +263,7 @@ const DashboardMahasiswa: React.FC = () => {
                 )}
 
                 {/* BANNER BUKA PINTU SIDANG */}
-                {data?.isAllRevisiAcc && !data?.sidangReq && activeStep !== 9 && (
+                {data?.isAllRevisiAcc && !data?.sidangReq && activeStep < 9 && (
                   <div className="mb-8 bg-emerald-500 rounded-[2.5rem] p-8 text-white flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-xl shadow-emerald-200 animate-in fade-in slide-in-from-bottom-4 duration-700">
                     <div className="flex items-center gap-6">
                       <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center shrink-0 border border-white/30">
@@ -269,16 +286,16 @@ const DashboardMahasiswa: React.FC = () => {
                 )}
 
                 {/* BANNER KELULUSAN */}
-                {activeStep === 9 && (
-                  <div className="mb-8 bg-gradient-to-r from-blue-600 to-indigo-700 rounded-[2.5rem] p-8 text-white flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-2xl shadow-blue-300/50 animate-in zoom-in duration-700 relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-5 rounded-full blur-3xl transform translate-x-1/2 -translate-y-1/2"></div>
+                {prop?.status_lulus && (
+                  <div className="mb-8 bg-blue-600 rounded-[2.5rem] p-8 text-white flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-2xl shadow-blue-300/50 animate-in zoom-in duration-700 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-10 rounded-full blur-3xl transform translate-x-1/4 -translate-y-1/4 pointer-events-none"></div>
                     <div className="flex items-center gap-6 relative z-10">
                       <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center shrink-0 border border-white/30 shadow-inner">
                         <ShieldCheck size={32} className="text-amber-300" />
                       </div>
                       <div>
                         <h3 className="text-2xl font-black uppercase tracking-tight mb-1 text-white">Selamat, Anda Lulus! 🎉</h3>
-                        <p className="text-blue-100 text-sm font-medium leading-relaxed max-w-xl">
+                        <p className="text-blue-100 text-sm font-medium leading-relaxed max-w-2xl">
                           Skripsi Anda telah disahkan oleh Kaprodi dan Anda resmi dinyatakan Lulus. Semua perjuangan Anda terbayar lunas. Sukses untuk langkah selanjutnya!
                         </p>
                       </div>
@@ -287,12 +304,12 @@ const DashboardMahasiswa: React.FC = () => {
                 )}
 
                 {/* PERINGATAN SYARAT (Kunci Seminar) */}
-                {!isEligible && activeStep !== 9 && (
+                {!isEligible && activeStep < 8 && (
                   <div className="mb-8 bg-white border-l-4 border-orange-500 rounded-3xl shadow-lg p-6 flex items-start gap-5 animate-in slide-in-from-top-4 duration-500">
                     <div className="p-3 bg-orange-100 text-orange-600 rounded-2xl"><Lock size={24} /></div>
                     <div className="flex-1">
-                      <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">Tahap Seminar Terkunci</h3>
-                      <p className="text-sm text-slate-500 mt-1">Selesaikan minimal 10x bimbingan P1 & P2 serta persetujuan dosen untuk membuka akses.</p>
+                      <h3 className="text-lg font-black text-slate-800 tracking-tight">Tahap Seminar Terkunci</h3>
+                      <p className="text-sm text-slate-500 mt-1">Selesaikan minimal 10x bimbingan dengan Pembimbing 1 dan Pembimbing 2 serta persetujuan untuk membuka akses.</p>
                       <div className="mt-4 flex flex-wrap gap-3">
                         <StatusBadge label="P1" current={bimbinganCount.p1} target={10} />
                         <StatusBadge label="P2" current={bimbinganCount.p2} target={10} />
@@ -313,12 +330,12 @@ const DashboardMahasiswa: React.FC = () => {
                   <div className="flex justify-between items-center mb-10">
                     <h3 className="text-sm font-black text-slate-400 uppercase tracking-[0.2em]">Linimasa Skripsi</h3>
                     <span className="bg-blue-50 text-blue-600 px-4 py-1.5 rounded-full text-xs font-black border border-blue-100 tracking-widest">
-                      Tahap Saat Ini :  {activeStep + 1}
+                      Tahap Saat Ini :  {Math.min(activeStep + 1, 10)}
                     </span>
                   </div>
                   <div className="relative pt-4 pb-8">
                     <div className="absolute top-[38px] left-6 w-full h-1.5 bg-slate-100 rounded-full z-0" />
-                    <div className="absolute top-[38px] left-6 h-1.5 bg-green-600 rounded-full z-0 transition-all duration-700" style={{ width: `${greenWidth}%` }} />
+                    <div className="absolute top-[38px] left-6 h-1.5 bg-green-500 rounded-full z-0 transition-all duration-700" style={{ width: `${greenWidth}%` }} />
                     {blueWidth > 0 && <div className="absolute top-[38px] h-1.5 bg-blue-600 rounded-full z-0 transition-all duration-700" style={{ left: `calc(${greenWidth}% + 1.5rem)`, width: `${blueWidth}%` }} />}
                     <div className="relative flex justify-between">
                       {["Pengajuan Judul", "Persetujuan Dosbing", "Bimbingan", "Kesiapan Seminar", "Unggah Dokumen Seminar", "Verifikasi Berkas", "Seminar", "Perbaikan Seminar", "Sidang", "Lulus"].map((l, i) => (
@@ -330,9 +347,9 @@ const DashboardMahasiswa: React.FC = () => {
 
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                   
-                  <div className={`lg:col-span-4 bg-white p-8 rounded-[2.5rem] border border-white shadow-xl shadow-slate-200/50 flex flex-col items-center transition-all ${!isEligible && activeStep !== 9 ? 'opacity-75' : ''}`}>
+                  <div className={`lg:col-span-4 bg-white p-8 rounded-[2.5rem] border border-white shadow-xl shadow-slate-200/50 flex flex-col items-center transition-all ${!isEligible && activeStep < 8 ? 'opacity-75' : ''}`}>
                     <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest mb-10 w-full flex justify-between">
-                      Kelengkapan Dokumen {(!isEligible && activeStep !== 9) && <Lock size={16} className="text-slate-400" />}
+                      Kelengkapan Dokumen {(!isEligible && activeStep < 8) && <Lock size={16} className="text-slate-400" />}
                     </h3>
                     
                     <div className="relative w-48 h-48 flex items-center justify-center mb-10">
@@ -352,7 +369,6 @@ const DashboardMahasiswa: React.FC = () => {
                     </div>
 
                     <div className="w-full space-y-3">
-                      {/* 🔥 Label Dokumen sekarang huruf normal 🔥 */}
                       <DocumentItem label="Form Layak & Jadwal" status={getDocStatus('form_layak_dan_jadwal')} />
                       <DocumentItem label="Form Nilai Magang Gabungan" status={getDocStatus('nilai_magang_gabungan')} />
                       <DocumentItem label="Bukti Serah Laporan Magang" status={getDocStatus('bukti_serah_magang')} />
@@ -370,12 +386,12 @@ const DashboardMahasiswa: React.FC = () => {
                     <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest mb-8">Ringkasan Status</h3>
                     <div className="space-y-4">
                       <SummaryRow icon={<ShieldCheck size={18} />} label="P1 (Utama)" value={`${bimbinganCount.p1} / 10`} status={bimbinganCount.p1 >= 10} />
-                      <SummaryRow icon={<ShieldCheck size={18} />} label="P2 (Co-Dosbing)" value={`${bimbinganCount.p2} / 10`} status={bimbinganCount.p2 >= 10} />
+                      <SummaryRow icon={<ShieldCheck size={18} />} label="P2 (Co-Pembimbing)" value={`${bimbinganCount.p2} / 10`} status={bimbinganCount.p2 >= 10} />
                       <SummaryRow icon={<ShieldCheck size={18} />} label="ACC Dosbing" value={isAccDosen ? 'Valid' : 'Pending'} status={isAccDosen} />
                     </div>
                     <div className="mt-8 p-6 bg-slate-50 rounded-3xl border border-slate-100">
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ">Info Penting</p>
-                      <p className="text-xs text-slate-600 leading-relaxed font-medium">Lengkapi minimal 10x bimbingan dengan Pembimbing Utama dan Pendamping sebelum mengajukan seminar hasil.</p>
+                      <p className="text-xs text-slate-600 leading-relaxed font-medium">Lengkapi minimal 10x bimbingan dengan Pembimbing Utama dan Co-Pembimbing  sebelum mengajukan seminar hasil.</p>
                     </div>
                   </div>
 
@@ -407,7 +423,6 @@ export default DashboardMahasiswa;
 
 // --- HELPER COMPONENTS ---
 
-// 🔥 Dihilangkan class 'uppercase', size dinaikkan sedikit agar bisa dibaca
 const TimelineStep = ({ label, index, current, completed }: any) => (
   <div className="flex flex-col items-center w-16 relative z-10">
     <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border-4 border-white shadow-lg transition-all duration-500 ${completed ? 'bg-green-500 text-white' : current ? 'bg-blue-600 text-white scale-110 shadow-blue-200' : 'bg-slate-100 text-slate-300'}`}>
@@ -419,7 +434,6 @@ const TimelineStep = ({ label, index, current, completed }: any) => (
   </div>
 );
 
-// 🔥 Dihilangkan class 'uppercase', text size diubah ke text-xs
 const DocumentItem = ({ label, status }: any) => (
   <div className="flex items-center justify-between p-3 bg-slate-50/50 rounded-xl border border-transparent hover:border-slate-200 transition-all">
     <span className="text-xs font-bold text-slate-600 truncate mr-4 tracking-tight">{label}</span>

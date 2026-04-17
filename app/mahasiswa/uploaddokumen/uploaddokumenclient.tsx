@@ -2,9 +2,7 @@
 
 import React, { useRef, useState } from 'react';
 import useSWR from 'swr'; // 🔥 Import SWR
-import Sidebar from '@/components/sidebar';
 import { sendNotification } from "@/lib/notificationUtils";
-import NotificationBell from '@/components/notificationBell';
 import { supabase } from '@/lib/supabaseClient';
 import { useRouter } from 'next/navigation';
 import { 
@@ -59,7 +57,14 @@ const fetcher = async () => {
 
   let p1 = 0, p2 = 0;
   supervisors?.forEach(sp => {
-    const validSessions = sessions?.filter((s: any) => s.dosen_id === sp.dosen_id && s.session_feedbacks?.[0]?.status_revisi !== 'revisi') || [];
+    // 🔥 LOGIKA BARU: Dihitung valid JIKA HADIR (sudah difilter di query Supabase baris 41) 
+    // DAN status revisinya ADA (disetujui ATAU revisi)
+    const validSessions = sessions?.filter((s: any) => {
+      if (s.dosen_id !== sp.dosen_id) return false;
+      const latestStatus = s.session_feedbacks?.[0]?.status_revisi;
+      return latestStatus === 'disetujui' || latestStatus === 'revisi';
+    }) || [];
+    
     if (sp.role === 'utama' || sp.role === 'pembimbing1') p1 = validSessions.length;
     else p2 = validSessions.length;
   });
@@ -206,21 +211,7 @@ export default function UploadDokumenClient() {
   const percentage = Math.round((verifiedCount / totalDocs) * 100);
 
   return (
-    <div className="flex h-screen bg-[#F8FAFC] font-sans text-slate-700 overflow-hidden">
-      <Sidebar />
-      <main className="flex-1 ml-64 flex flex-col h-full overflow-y-auto">
-        <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-20 shrink-0">
-          <div className="flex items-center gap-6"><div className="relative w-72 group"></div></div>
-          <div className="flex items-center gap-6">
-            <NotificationBell />
-            <div className="h-8 w-[1px] bg-slate-200 mx-2" />
-            <div className="flex items-center gap-6">
-              <span className="text-sm font-black tracking-[0.4em] text-blue-600 uppercase border-r border-slate-200 pr-6 mr-2">Simpro</span>
-            </div>
-          </div>
-        </header>
-
-        <div className="p-10 max-w-6xl mx-auto w-full">
+    <div className="p-10 max-w-[1400px] mx-auto outline-none focus:outline-none">
           
           {isLoading && !data ? (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-10 animate-pulse">
@@ -291,7 +282,7 @@ export default function UploadDokumenClient() {
                       <AlertCircle size={24} className="text-blue-200" />
                     </div>
                     <div className="flex-1">
-                      <h4 className="text-sm font-black uppercase tracking-tight">4. File Skripsi (Langkah Terakhir)</h4>
+                      <h4 className="text-sm font-black tracking-tight">5. File Skripsi (Langkah Terakhir)</h4>
                       <p className="text-xs text-blue-100/70 font-medium leading-relaxed mt-1">
                         Wajib dikirim melalui e-mail ke <span className="text-white font-bold underline">informatika@unpad.ac.id</span>
                       </p>
@@ -314,9 +305,7 @@ export default function UploadDokumenClient() {
           )}
 
         </div>
-      </main>
-    </div>
-  );
+    );
 }
 
 // ================= KOMPONEN ROW =================
@@ -334,8 +323,8 @@ function DocumentRow({ label, sub, data, onUpload, onDelete, isEligible, disable
           {isComplete ? <Check size={28} strokeWidth={3} /> : isPending ? <Clock size={28} strokeWidth={3} /> : <CloudUpload size={28} />}
         </div>
         <div>
-          <p className="text-sm font-black text-slate-800 uppercase tracking-tight leading-none mb-1">{label}</p>
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{sub}</p>
+          <p className="text-sm font-black text-slate-800 tracking-tight leading-none mb-1">{label}</p>
+          <p className="text-[10px] text-slate-400 font-bold tracking-widest">{sub}</p>
         </div>
       </div>
 

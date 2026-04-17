@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useState, Suspense } from "react";
+import useSWR from "swr"; // 🚀 Import SWR
+import Link from "next/link";
+import Image from "next/image";
 import { 
   Search, 
-  Bell, 
-  User, 
   FileText, 
   ArrowLeft,
   CheckCircle,
@@ -30,113 +31,121 @@ interface ProposalDetail {
   judul: string;
   file_path: string | null;
   status: string;
-   user: {
+  user: {
     id: string;
     nama: string | null;
     npm: string | null;
+    avatar_url?: string | null;
   } | null;
 }
 
-// ---------------- PAGE ----------------
+export default function DetailProposalMahasiswaPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex h-screen items-center justify-center bg-[#F8F9FB] z-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600"></div>
+      </div>
+    }>
+      <DetailProposalDosenContent />
+    </Suspense>
+  );
+}
 
-export default function DetailProposalMahasiswaClient() {
+// ================= FETCHER SWR =================
+const fetchDetailProposalDosen = async (proposalId: string | null) => {
+  if (!proposalId) return null;
+
+  const { data: sessionData } = await supabase.auth.getSession();
+  const userId = sessionData.session?.user.id || null;
+
+  // 1. Ambil Proposal Utama
+  const { data: propData, error } = await supabase
+    .from("proposals")
+    .select(`id, judul, file_path, status, user:profiles ( id, nama, npm, avatar_url )`)
+    .eq("id", proposalId)
+    .maybeSingle();
+
+  if (error) throw error;
+  
+  // Pastikan user tidak terbungkus dalam array tunggal (bug Supabase)
+  const formattedProposal = {
+    ...propData,
+    user: Array.isArray((propData as any)?.user) ? (propData as any).user[0] : (propData as any)?.user
+  } as ProposalDetail;
+
+  // 2. Ambil data dari thesis_supervisors
+  const { data: supervisors } = await supabase
+    .from("thesis_supervisors")
+    .select(`id, dosen_id, role, status, rejection_reason, dosen:profiles ( nama )`)
+    .eq("proposal_id", proposalId);
+
+  // 3. Ambil data dari proposal_recommendations
+  const { data: recommendations } = await supabase
+    .from("proposal_recommendations")
+    .select(`dosen_id, tipe`)
+    .eq("proposal_id", proposalId);
+
+  // 4. Merge Bersih
+  let displayList: any[] = supervisors ? [...supervisors] : [];
+
+  if (recommendations && recommendations.length > 0) {
+    recommendations.forEach(rec => {
+      const isAlreadyProcessed = displayList.find(s => s.dosen_id === rec.dosen_id);
+      if (!isAlreadyProcessed) {
+        displayList.push({
+          id: `temp-${rec.dosen_id}`,
+          dosen_id: rec.dosen_id,
+          role: rec.tipe === 'pembimbing1' ? 'utama' : 'pendamping',
+          status: 'pending',
+          rejection_reason: null,
+          dosen: { nama: "Dosen" }
+        });
+      }
+    });
+  }
+
+  // 5. Cek Respon Pribadi Dosen
+  let myResponseData = null;
+  if (userId) {
+    const me = displayList.find((s) => s.dosen_id === userId);
+    myResponseData = me || null;
+  }
+
+  return {
+    proposal: formattedProposal,
+    currentDosenId: userId,
+    myResponseData
+  };
+};
+
+
+function DetailProposalDosenContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const proposalId = searchParams.get("id");
 
-  const [proposal, setProposal] = useState<ProposalDetail | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [openingPdf, setOpeningPdf] = useState(false);
-  const [currentDosenId, setCurrentDosenId] = useState<string | null>(null);
-  
-  // 🔥 State khusus untuk respon dosen (meniru Kaprodi)
-  const [myResponseData, setMyResponseData] = useState<Supervisor | null>(null);
+  // 🔥 IMPLEMENTASI SWR 🔥
+  const { data: cache, isLoading, mutate } = useSWR(
+    proposalId ? `detail_proposal_dosen_${proposalId}` : null,
+    () => fetchDetailProposalDosen(proposalId),
+    {
+      revalidateOnFocus: true,
+      refreshInterval: 60000 
+    }
+  );
 
+  // --- EXTRACT CACHE DATA ---
+  const proposal = cache?.proposal || null;
+  const currentDosenId = cache?.currentDosenId || null;
+  const myResponseData = cache?.myResponseData || null;
+
+  // --- LOCAL STATE ---
+  const [openingPdf, setOpeningPdf] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // ================= FETCH DETAIL =================
-
-  useEffect(() => {
-    const initPage = async () => {
-      setLoading(true);
-      
-      const { data } = await supabase.auth.getSession();
-      const userId = data.session?.user.id || null;
-      setCurrentDosenId(userId);
-
-      if (proposalId) {
-        await fetchData(userId);
-      } else {
-        setLoading(false);
-      }
-    };
-
-    initPage();
-  }, [proposalId]); 
-
-  // 🔥 Fungsi fetchData yang diadaptasi penuh dari versi Kaprodi
-  const fetchData = async (activeUserId: string | null) => {
-    if (!proposalId) return;
-    
-    try {
-      // 1. Ambil Proposal Utama
-      const { data: propData, error } = await supabase
-        .from("proposals")
-        .select(`id, judul, file_path, status, user:profiles ( id, nama, npm )`)
-        .eq("id", proposalId)
-        .maybeSingle();
-
-      if (error) throw error;
-      setProposal(propData as any);
-
-      // 2. Ambil data dari thesis_supervisors (Sudah diproses)
-      const { data: supervisors } = await supabase
-        .from("thesis_supervisors")
-        .select(`id, dosen_id, role, status, rejection_reason, dosen:profiles ( nama )`)
-        .eq("proposal_id", proposalId);
-
-      // 3. Ambil data dari proposal_recommendations (Baru diusulkan)
-      const { data: recommendations } = await supabase
-        .from("proposal_recommendations")
-        .select(`dosen_id, tipe`)
-        .eq("proposal_id", proposalId);
-
-      // 4. LOGIKA MERGE BERSIH
-      let displayList: any[] = supervisors ? [...supervisors] : [];
-
-      if (recommendations && recommendations.length > 0) {
-        recommendations.forEach(rec => {
-          const isAlreadyProcessed = displayList.find(s => s.dosen_id === rec.dosen_id);
-          if (!isAlreadyProcessed) {
-            displayList.push({
-              id: `temp-${rec.dosen_id}`, // ID sementara
-              dosen_id: rec.dosen_id,
-              role: rec.tipe === 'pembimbing1' ? 'utama' : 'pendamping',
-              status: 'pending',
-              rejection_reason: null,
-              dosen: { nama: "Dosen" }
-            });
-          }
-        });
-      }
-
-      // 🔥 CEK RESPON PRIBADI DOSEN 🔥
-      if (activeUserId) {
-        const me = displayList.find((s) => s.dosen_id === activeUserId);
-        setMyResponseData(me || null);
-      }
-
-    } catch (error: any) {
-      console.error("Fetch error:", error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   // ================= ACTIONS =================
-
   const handleResponse = async (isAccepted: boolean) => {
     if (!currentDosenId || !proposalId) return;
     
@@ -148,7 +157,7 @@ export default function DetailProposalMahasiswaClient() {
     try {
       const myRole = myResponseData?.role || 'utama';
 
-      // 1. Cek apakah data ini sudah ada di thesis_supervisors
+      // 1. Cek DB untuk thesis_supervisors existing
       const { data: existing } = await supabase
         .from("thesis_supervisors")
         .select("id")
@@ -157,7 +166,6 @@ export default function DetailProposalMahasiswaClient() {
         .maybeSingle();
 
       if (existing) {
-        // Update jika ada
         const { error } = await supabase
           .from("thesis_supervisors")
           .update({
@@ -167,7 +175,6 @@ export default function DetailProposalMahasiswaClient() {
           .eq("id", existing.id);
         if (error) throw error;
       } else {
-        // Insert jika baru dari antrean
         const { error } = await supabase
           .from("thesis_supervisors")
           .insert({
@@ -210,8 +217,8 @@ export default function DetailProposalMahasiswaClient() {
       setShowRejectModal(false);
       setRejectReason("");
 
-      // Refresh data UI tanpa reload halaman
-      await fetchData(currentDosenId); 
+      // 🔥 Memicu SWR untuk fetch ulang data di background
+      mutate(); 
       
     } catch (err: any) {
       alert("Gagal memproses: " + err.message);
@@ -246,19 +253,37 @@ export default function DetailProposalMahasiswaClient() {
   };
 
   // ================= UI RENDER =================
-
-  if (loading) {
+  if (isLoading && !cache) {
     return (
-      <div className="flex items-center justify-center h-screen text-gray-500 bg-[#F8F9FB]">
-        Memuat data...
+      <div className="flex h-screen items-center justify-center bg-[#F8F9FB] z-50">
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600"></div>
+        </div>
       </div>
     );
   }
 
   if (!proposal) {
     return (
-      <div className="flex items-center justify-center h-screen text-red-500 bg-[#F8F9FB]">
-        Data proposal tidak ditemukan.
+      <div className="flex flex-col items-center justify-center h-screen bg-[#F8F9FB]">
+        <div className="w-24 h-24 bg-slate-100 border-2 border-dashed border-slate-200 rounded-[2rem] flex items-center justify-center text-slate-300 mb-6 shadow-inner relative overflow-hidden">
+          <Search size={32} className="relative z-10" />
+        </div>
+        <h2 className="text-lg font-black text-slate-700 uppercase tracking-widest mb-2">Data Tidak Ditemukan</h2>
+        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest text-center max-w-xs mb-8">
+          Data proposal yang Anda cari tidak ada di sistem atau akses ditolak.
+        </p>
+        <button 
+          onClick={() => router.back()}
+          className="group flex items-center gap-4 transition-all active:scale-95"
+        >
+          <div className="w-12 h-12 bg-white border border-slate-200 rounded-2xl flex items-center justify-center text-slate-500 group-hover:text-blue-600 group-hover:border-blue-200 group-hover:bg-blue-50 group-hover:shadow-md transition-all shadow-sm shrink-0">
+            <ArrowLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
+          </div>
+          <span className="text-[11px] font-black text-slate-500 uppercase tracking-[0.15em] group-hover:text-blue-600 transition-colors">
+            Kembali ke Akses Proposal
+          </span>
+        </button>
       </div>
     );
   }
@@ -266,34 +291,54 @@ export default function DetailProposalMahasiswaClient() {
   return (
     <div className="flex min-h-screen bg-[#F8F9FB] font-sans text-slate-700">
       <div className="flex-1 flex flex-col h-screen overflow-y-auto">
-        <main className="flex-1 p-8">
+        <main className="flex-1 p-10 max-w-[1400px] mx-auto w-full">
 
-          <div className="flex items-center gap-4 mb-8">
+          <div className="mb-10">
             <button 
               onClick={() => router.back()}
-              className="w-10 h-10 bg-white border border-gray-200 rounded-xl flex items-center justify-center text-gray-500 hover:text-blue-600 hover:border-blue-200 transition-all shadow-sm"
+              className="group flex items-center gap-4 mb-8 w-fit transition-all active:scale-95"
             >
-              <ArrowLeft size={20} />
+              <div className="w-12 h-12 bg-white border border-slate-200 rounded-2xl flex items-center justify-center text-slate-500 group-hover:text-blue-600 group-hover:border-blue-200 group-hover:bg-blue-50 group-hover:shadow-md transition-all shadow-sm shrink-0">
+                <ArrowLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
+              </div>
+              <span className="text-[11px] font-black text-slate-500 uppercase tracking-[0.15em] group-hover:text-blue-600 transition-colors">
+                Kembali ke Akses Proposal
+              </span>
             </button>
-            <h1 className="text-xl font-bold text-gray-900">
-              Detail Proposal Mahasiswa
-            </h1>
           </div>
 
           <div className="space-y-6">
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
               <div className="p-8 flex items-center gap-5">
-                <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center font-bold text-xl uppercase">
-                  {proposal.user?.nama?.charAt(0)}
+                <div className="w-16 h-16 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-xl uppercase relative overflow-hidden shrink-0 border border-slate-200">
+                  {proposal.user?.avatar_url ? (
+                    <Image 
+                      src={proposal.user.avatar_url} 
+                      alt={proposal.user?.nama || "User"} 
+                      layout="fill" 
+                      objectFit="cover" 
+                    />
+                  ) : (
+                    proposal.user?.nama?.charAt(0) || "?"
+                  )}
                 </div>
-                <div>
-                  <h2 className="text-xl font-bold text-gray-900 uppercase tracking-tight">{proposal.user?.nama}</h2>
-                  <p className="text-gray-500 font-medium">{proposal.user?.npm}</p>
+                
+               <div className="min-w-0">
+                  <h2 className="text-xl font-black text-slate-800 leading-none truncate tracking-tight mb-1">
+                    {proposal.user?.nama}
+                  </h2>
+                  <p className="text-[11px] font-black text-slate-400 tracking-widest">
+                    {proposal.user?.npm}
+                  </p>
                 </div>
               </div>
-              <div className="px-8 py-6 bg-slate-50 border-t border-gray-100">
-                <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Judul Proposal</h3>
-                <p className="text-lg font-bold text-gray-800 leading-tight italic">"{proposal.judul}"</p>
+              <div className="px-8 py-6 bg-slate-50 border-t border-slate-100">
+                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                  Judul Proposal
+                </h3>
+                <p className="text-lg font-bold text-slate-800 leading-tight">
+                  "{proposal.judul}"
+                </p>
               </div>
             </div>
 
@@ -333,42 +378,41 @@ export default function DetailProposalMahasiswaClient() {
                     )}
                   </p>
                   
-                  {/* 🔥 LOGIKA LOCK: Jika status utama sudah Diterima, hilangkan tombol dan beritahu Dosen */}
-{proposal.status === "Diterima" ? (
-  <div className="mt-6 p-4 bg-white/20 rounded-xl text-center border border-white/30 backdrop-blur-sm">
-    <div className="flex justify-center mb-2">
-      <CheckCircle size={24} className="text-white opacity-80" />
-    </div>
-    <p className="text-sm font-black uppercase tracking-widest text-white">Penetapan Final Selesai</p>
-    <p className="text-xs mt-1 text-white/80 font-medium">Kaprodi telah melakukan penetapan final untuk proposal ini. Respon tidak dapat diubah lagi.</p>
-  </div>
-) : (
-  <div className="flex gap-4">
-    {myResponseData.status !== 'accepted' && (
-      <button 
-        onClick={() => handleResponse(true)}
-        disabled={isSubmitting}
-        className="flex-1 bg-white text-slate-900 font-bold py-3 rounded-xl hover:bg-slate-100 transition-all active:scale-95 shadow-md disabled:opacity-50"
-      >
-        {myResponseData.status === 'rejected' ? "Ubah Menjadi Setuju" : "Setujui Topik"}
-      </button>
-    )}
-    
-    <button 
-      onClick={() => setShowRejectModal(true)}
-      disabled={isSubmitting}
-      className={`flex-1 font-bold py-3 rounded-xl transition-all active:scale-95 border disabled:opacity-50 ${
-        myResponseData.status === 'accepted'
-        ? 'bg-emerald-700 border-emerald-500 hover:bg-emerald-800'
-        : myResponseData.status === 'rejected'
-        ? 'bg-red-700 border-red-500 hover:bg-red-800'
-        : 'bg-blue-700 border-blue-500 hover:bg-blue-800'
-      }`}
-    >
-      {myResponseData.status === 'accepted' ? "Batalkan / Tolak" : myResponseData.status === 'rejected' ? "Ubah Alasan Tolak" : "Tolak Topik"}
-    </button>
-  </div>
-)}
+                  {proposal.status === "Diterima" ? (
+                    <div className="mt-6 p-4 bg-white/20 rounded-xl text-center border border-white/30 backdrop-blur-sm">
+                      <div className="flex justify-center mb-2">
+                        <CheckCircle size={24} className="text-white opacity-80" />
+                      </div>
+                      <p className="text-sm font-black uppercase tracking-widest text-white">Penetapan Final Selesai</p>
+                      <p className="text-xs mt-1 text-white/80 font-medium">Kaprodi telah melakukan penetapan final untuk proposal ini. Respon tidak dapat diubah lagi.</p>
+                    </div>
+                  ) : (
+                    <div className="flex gap-4">
+                      {myResponseData.status !== 'accepted' && (
+                        <button 
+                          onClick={() => handleResponse(true)}
+                          disabled={isSubmitting}
+                          className="flex-1 bg-white text-slate-900 font-bold py-3 rounded-xl hover:bg-slate-100 transition-all active:scale-95 shadow-md disabled:opacity-50"
+                        >
+                          {myResponseData.status === 'rejected' ? "Ubah Menjadi Setuju" : "Setujui Topik"}
+                        </button>
+                      )}
+                      
+                      <button 
+                        onClick={() => setShowRejectModal(true)}
+                        disabled={isSubmitting}
+                        className={`flex-1 font-bold py-3 rounded-xl transition-all active:scale-95 border disabled:opacity-50 ${
+                          myResponseData.status === 'accepted'
+                          ? 'bg-emerald-700 border-emerald-500 hover:bg-emerald-800'
+                          : myResponseData.status === 'rejected'
+                          ? 'bg-red-700 border-red-500 hover:bg-red-800'
+                          : 'bg-blue-700 border-blue-500 hover:bg-blue-800'
+                        }`}
+                      >
+                        {myResponseData.status === 'accepted' ? "Batalkan / Tolak" : myResponseData.status === 'rejected' ? "Ubah Alasan Tolak" : "Tolak Topik"}
+                      </button>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="bg-white border border-gray-200 rounded-2xl p-6 flex items-center gap-4 shadow-sm">
