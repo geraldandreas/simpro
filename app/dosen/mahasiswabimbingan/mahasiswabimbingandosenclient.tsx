@@ -45,13 +45,19 @@ export function mapStatusToUI(params: {
 
   if (hasSidang) return { label: "Sidang Skripsi", color: "bg-emerald-100 text-emerald-700 border-emerald-200" };
   if (seminarStatus === "Selesai") return { label: "Perbaikan Pasca Seminar", color: "bg-orange-100 text-orange-700 border-orange-200" };
-  if (verifiedDocsCount >= 3) return { label: "Seminar Hasil", color: "bg-emerald-100 text-emerald-700 border-emerald-200" };
-  
+  // 🔥 PERBAIKAN: Tahan status "Seminar Hasil" jika Kaprodi belum memberikan jadwal
+  const isSeminarScheduled = seminarStatus === 'Dijadwalkan' || seminarStatus === 'Disetujui' || seminarStatus === 'Selesai';
+  if (isSeminarScheduled) {
+    return { label: "Seminar Hasil", color: "bg-emerald-100 text-emerald-700 border-emerald-200" };
+  }
+
+  // Jika dokumen lengkap tapi belum dijadwalkan, tahan di Verifikasi Berkas
+  if (verifiedDocsCount >= 3) return { label: "Verifikasi Berkas", color: "bg-blue-100 text-blue-700 border-blue-200" };
   if (proposalStatus === "Diterima") {
     if (isEligible) {
       if (uploadedDocsCount >= 3) return { label: "Verifikasi Berkas", color: "bg-purple-100 text-purple-700 border-purple-200" };
       if (uploadedDocsCount > 0) return { label: "Unggah Dokumen Seminar", color: "bg-blue-100 text-blue-700 border-blue-200" };
-      return { label: "Proses Kesiapan Seminar", color: "bg-blue-100 text-blue-700 border-blue-200" };
+      return { label: "Persetujuan Seminar", color: "bg-blue-100 text-blue-700 border-blue-200" };
     }
     return { label: "Proses Bimbingan", color: "bg-indigo-100 text-indigo-700 border-indigo-200" };
   }
@@ -320,7 +326,7 @@ export default function MahasiswaBimbinganDosenClient() {
 
       await Promise.all(notificationPromises);
 
-      alert(`✅ Jadwal bimbingan Sesi ${sesi} berhasil diterapkan dan notifikasi terkirim!`);
+      alert(`Jadwal bimbingan Sesi ${sesi} berhasil diterapkan dan notifikasi terkirim!`);
       mutate(); // Refresh State SWR
     } catch (err) {
       console.error(err);

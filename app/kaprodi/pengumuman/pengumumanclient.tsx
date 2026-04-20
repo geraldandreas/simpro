@@ -68,12 +68,12 @@ export default function PengumumanKaprodiPage() {
       
       if (error) throw error;
       
-      alert("✅ Pengumuman berhasil disebarkan!");
+      alert("Pengumuman berhasil disebarkan!");
       setJudul("");
       setKonten("");
       mutate(); // 🔥 Refresh SWR State
     } catch (error: any) {
-      alert("❌ Gagal mengirim pengumuman: " + error.message);
+      alert("Gagal mengirim pengumuman: " + error.message);
     } finally {
       setIsSubmitting(false);
     }
@@ -120,11 +120,11 @@ export default function PengumumanKaprodiPage() {
 
       if (error) throw error;
 
-      alert("✅ Pengumuman berhasil diperbarui!");
+      alert("Pengumuman berhasil diperbarui!");
       setIsEditModalOpen(false);
       mutate(); // 🔥 Refresh SWR State
     } catch (err: any) {
-      alert("❌ Gagal memperbarui pengumuman: " + err.message);
+      alert("Gagal memperbarui pengumuman: " + err.message);
     } finally {
       setIsSavingEdit(false);
     }

@@ -238,12 +238,12 @@ const handleSave = async () => {
   if (!sessionId) return;
 
   if (!kehadiran) {
-    alert("❗ Tentukan kehadiran mahasiswa terlebih dahulu");
+    alert("Tentukan kehadiran mahasiswa terlebih dahulu");
     return;
   }
 
   if (!statusRevisi) {
-    alert("❗ Tentukan status bimbingan Mahasiswa (selesai / revisi)");
+    alert("Tentukan status bimbingan Mahasiswa (selesai / revisi)");
     return;
   }
 
@@ -326,12 +326,12 @@ const handleSave = async () => {
       }
     }
 
-    alert("✅ Feedback dan Kehadiran berhasil disimpan");
+    alert("Feedback dan Kehadiran berhasil disimpan");
     setFileBalasan(null);
     router.refresh();
   } catch (err: any) {
     console.error(err);
-    alert("❌ Gagal menyimpan feedback");
+    alert("Gagal menyimpan feedback");
   } finally {
     setSaving(false);
   }
@@ -401,7 +401,7 @@ const handleSave = async () => {
         if (error) throw error;
       }
 
-      alert("✅ ACC Seminar berhasil dicatat");
+      alert("ACC Seminar berhasil dicatat");
       
       // 🔥 PERBAIKAN: Langsung ubah state agar layar TERKUNCI seketika 🔥
       setIsSeminarApproved(true);
@@ -423,7 +423,7 @@ const handleSave = async () => {
 
     } catch (err: any) {
       console.error(err);
-      alert("❌ Gagal ACC Seminar: " + err.message);
+      alert("Gagal ACC Seminar: " + err.message);
     } finally {
       setSaving(false);
     }

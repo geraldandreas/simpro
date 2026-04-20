@@ -38,14 +38,14 @@ const MENU_ITEMS = [
   { label: "Dashboard", icon: LayoutDashboard, href: "/dosen/dashboarddosen" },
   { label: "Mahasiswa Bimbingan", icon: Users, href: "/dosen/mahasiswabimbingan" },
   { label: "Akses Proposal", icon: FileText, href: "/dosen/aksesproposal" },
-  { label: "Jadwal Penguji Seminar", icon: CalendarCheck, href: "/dosen/jadwalpengujiseminar" },
+  { label: "Jadwal Menguji Seminar", icon: CalendarCheck, href: "/dosen/jadwalpengujiseminar" },
   { label: "Perbaikan Seminar", icon: FileCheck, href: "/dosen/perbaikanseminar" }, 
-  { label: "Jadwal Penguji Sidang", icon: GraduationCap, href: "/dosen/jadwalmengujisidang" },
+  { label: "Jadwal Menguji Sidang", icon: GraduationCap, href: "/dosen/jadwalmengujisidang" },
 ];
 
 export default function SidebarDosen() {
   const pathname = usePathname();
-  const router = useRouter();
+  const router = useRouter();``
 
   // 🔥 IMPLEMENTASI SWR 🔥
   const { data } = useSWR('sidebar_dosen_profile', fetchDosenProfile, {

@@ -8,7 +8,8 @@ import { useRouter } from 'next/navigation';
 import { 
   Check, X, Clock,
   AlertCircle, Lock, CloudUpload, ChevronRight,
-  ShieldCheck, FileText 
+  ShieldCheck, FileText, 
+  CheckCircle2
 } from 'lucide-react';
 
 interface DocumentData {
@@ -47,7 +48,7 @@ const fetcher = async () => {
     { data: sessions },
     { data: docs }
   ] = await Promise.all([
-    supabase.from('seminar_requests').select('approved_by_p1, approved_by_p2').eq('proposal_id', proposal.id).maybeSingle(),
+    supabase.from('seminar_requests').select('status, approved_by_p1, approved_by_p2').eq('proposal_id', proposal.id).maybeSingle(),
     supabase.from('thesis_supervisors').select('dosen_id, role').eq('proposal_id', proposal.id),
     supabase.from('guidance_sessions').select(`dosen_id, session_feedbacks (status_revisi)`).eq('proposal_id', proposal.id).eq('kehadiran_mahasiswa', 'hadir'),
     supabase.from('seminar_documents').select('*').eq('proposal_id', proposal.id)
@@ -78,6 +79,7 @@ const fetcher = async () => {
 
   return {
     proposalId: proposal.id,
+    seminarStatus: seminar?.status || null,
     isAccDosen: approvedByAll,
     bimbinganCount: { p1, p2 },
     isEligible,
@@ -102,13 +104,15 @@ export default function UploadDokumenClient() {
   const proposalId = data?.proposalId || null;
   const isAccDosen = data?.isAccDosen || false;
   const isEligible = data?.isEligible || false;
+  const seminarStatus = data?.seminarStatus || null;
   const bimbinganCount = data?.bimbinganCount || { p1: 0, p2: 0 };
   const documents = data?.documentsMap || {};
+  const isSubmitted = seminarStatus && seminarStatus !== 'draft';
 
   // ================= HANDLERS =================
   const handleUpload = async (docId: string, file: File) => {
     if (!isEligible) { 
-      alert("⛔️ Akses terkunci. Syarat bimbingan/ACC belum terpenuhi."); 
+      alert("Akses terkunci. Syarat bimbingan/ACC belum terpenuhi."); 
       return; 
     }
     
@@ -170,7 +174,7 @@ export default function UploadDokumenClient() {
   const handleFinalSubmit = async () => {
     if (percentage < 100) return;
 
-    const confirmKonsultasi = window.confirm("PERHATIAN!\n\nPastikan Anda sudah berkonsultasi dengan Dosen Pembimbing Utama & Pendamping terkait usulan tanggal dan jam seminar.\n\nLanjutkan pengajuan?");
+    const confirmKonsultasi = window.confirm("PERHATIAN!\n\nPastikan Anda sudah berkonsultasi dengan Dosen Pembimbing Utama & Co-Pembimbing terkait usulan tanggal dan jam seminar.\n\nLanjutkan pengajuan?");
     if (!confirmKonsultasi) return;
 
     const confirm2 = window.confirm("Yakin ingin mengirim pengajuan sekarang? Pastikan Draft Skripsi yang diunggah adalah versi final.");
@@ -198,7 +202,7 @@ export default function UploadDokumenClient() {
           );
         }
 
-        alert("✅ Berhasil! Pengajuan seminar Anda telah dikirim.");
+        alert("Berhasil! Pengajuan seminar Anda telah dikirim.");
         router.push('/mahasiswa/dashboard');
     } catch (err: any) {
         alert("Gagal mengirim: " + err.message);
@@ -291,13 +295,27 @@ export default function UploadDokumenClient() {
                 </div>
 
                 <div className="p-10 bg-slate-50/50 border-t border-slate-100 flex justify-center">
+                  {/* 🔥 TOMBOL SUBMIT DIREVISI 🔥 */}
                   <button
-                    disabled={percentage < 100 || isSubmitting}
+                    disabled={percentage < 100 || isSubmitting || isSubmitted}
                     onClick={handleFinalSubmit}
-                    className={`px-12 py-5 rounded-full font-black text-[10px] uppercase tracking-[0.2em] shadow-2xl transition-all active:scale-95 flex items-center gap-4 ${percentage === 100 ? 'bg-blue-600 text-white shadow-blue-200 hover:bg-blue-700' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
+                    className={`px-12 py-5 rounded-full font-black text-[10px] uppercase tracking-[0.2em] shadow-2xl transition-all active:scale-95 flex items-center gap-4 ${
+                      isSubmitted
+                        ? 'bg-green-100 text-green-700 border border-green-200 shadow-none cursor-not-allowed'
+                        : percentage === 100 
+                          ? 'bg-blue-600 text-white shadow-blue-200 hover:bg-blue-700' 
+                          : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                    }`}
                   >
-                    {isSubmitting ? 'MEMPROSES...' : percentage === 100 ? 'Kirim Pengajuan Seminar' : 'Dokumen Belum Lengkap'}
-                    <ChevronRight size={18} />
+                    {isSubmitting 
+                      ? 'MEMPROSES...' 
+                      : isSubmitted 
+                        ? 'Pengajuan Seminar Telah Dikirim' 
+                        : percentage === 100 
+                          ? 'Kirim Pengajuan Seminar' 
+                          : 'Dokumen Belum Lengkap'}
+                    
+                    {isSubmitted ? <CheckCircle2 size={18} /> : <ChevronRight size={18} />}
                   </button>
                 </div>
               </div>

@@ -95,9 +95,13 @@ const fetchProgresSemuaMahasiswa = async () => {
         else p2Count = count;
       });
 
+      
+
       const approvedByAll = !!activeSeminarReq?.approved_by_p1 && !!activeSeminarReq?.approved_by_p2;
       let isEligible = p1Count >= 10 && p2Count >= 10 && approvedByAll;
-      if (docs.length > 0 || activeSeminarReq) isEligible = true;
+      if (docs.length > 0 || (activeSeminarReq && approvedByAll)) {
+        isEligible = true;
+      }
 
       const hasSidang = Array.isArray(p.sidang_requests) && p.sidang_requests.length > 0;
 

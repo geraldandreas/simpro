@@ -245,7 +245,7 @@ export default function PenjadwalanSidangKaprodiClient() {
       }
 
       setAlreadyScheduled(true);
-      alert("✅ Jadwal sidang berhasil dikonfirmasi dan dikirim ke seluruh pihak terkait.");
+      alert("Jadwal sidang berhasil dikonfirmasi dan dikirim ke seluruh pihak terkait.");
       mutate(); // 🔥 Refresh SWR State
       router.push("/kaprodi/pengajuansidang");
     } catch (err: any) {
@@ -335,7 +335,7 @@ export default function PenjadwalanSidangKaprodiClient() {
                   <p className="font-bold text-slate-800 capitalize tracking-tight">{pemb1}</p>
                 </div>
                 <div className="outline-none focus:outline-none">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Pembimbing Pendamping</p>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Co-Pembimbing</p>
                   <p className="font-bold text-slate-800 capitalize tracking-tight">{pemb2}</p>
                 </div>
               </div>

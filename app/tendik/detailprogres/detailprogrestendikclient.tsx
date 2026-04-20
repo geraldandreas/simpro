@@ -100,6 +100,30 @@ const fetchDetailTendikData = async (proposalId: string | null) => {
   const verifiedDocsCount = currentDocs.filter(d => d.status === 'Lengkap').length;
   const activeSeminarReq = (propData.seminar_requests || []).sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0] || null;
 
+  // 🔥 PERBAIKAN 1: Hitung bimbingan valid dan ACC dari kedua dosen
+  let p1Count = 0;
+  let p2Count = 0;
+  const sessions = propData.guidance_sessions || [];
+
+  propData.thesis_supervisors?.forEach((sp: any) => {
+    const count = sessions.filter((s: any) => 
+      s.dosen_id === sp.dosen_id && 
+      s.kehadiran_mahasiswa === 'hadir' &&
+      s.session_feedbacks?.[0]?.status_revisi === "disetujui"
+    ).length || 0;
+
+    if (sp.role === "utama" || sp.role === "pembimbing1") p1Count = count;
+    else p2Count = count;
+  });
+
+  const approvedByAll = !!activeSeminarReq?.approved_by_p1 && !!activeSeminarReq?.approved_by_p2;
+  
+  let isEligible = p1Count >= 10 && p2Count >= 10 && approvedByAll;
+
+  // Pastikan hanya force 'true' jika KEDUA dosen sudah ACC, atau tahapnya sudah lewat
+  if (currentDocs.length > 0 || (activeSeminarReq && approvedByAll)) {
+    isEligible = true;
+  }
   // Logika Feedback & Kelayakan
   let isAllRevisiAcc = false;
   let hasFeedback = false;
@@ -117,12 +141,12 @@ const fetchDetailTendikData = async (proposalId: string | null) => {
   // Map Tahap UI
   const ui = mapStatusToUI({
     proposalStatus: propData.status,
-    hasSeminar: !!activeSeminarReq || currentDocs.length > 0,
+    hasSeminar: !!activeSeminarReq,
     seminarStatus: activeSeminarReq?.status,
     hasSidang: !!sidangData,
     uploadedDocsCount: currentDocs.length,
     verifiedDocsCount: verifiedDocsCount,
-    isEligible: true,
+    isEligible: isEligible,
   });
 
   let finalTahap = ui.label;

@@ -217,7 +217,7 @@ function DetailRevisiDosen() {
 
     // Validasi: Jika ada yang ditolak, dosen WAJIB mengisi alasan penolakannya
     const hasEmptyFeedback = pointData.some(p => p.status === 'rejected' && (!p.dosen_feedback || p.dosen_feedback.trim() === ''));
-    if (hasEmptyFeedback) return alert("⚠️ Anda menolak poin perbaikan, namun ada kolom 'Alasan Penolakan' yang belum diisi. Harap lengkapi terlebih dahulu.");
+    if (hasEmptyFeedback) return alert("Anda menolak poin perbaikan, namun ada kolom 'Alasan Penolakan' yang belum diisi. Harap lengkapi terlebih dahulu.");
 
     // Tentukan Status Global (Berdasarkan Poin)
     const isAnyRejected = pointData.some(p => p.status === 'rejected');
@@ -228,7 +228,7 @@ function DetailRevisiDosen() {
     else if (isAllApproved) newGlobalStatus = 'diterima';
 
     if (newGlobalStatus === 'diterima' && !dosenTtdUrl) {
-      return alert("⚠️ PERHATIAN!\n\nUntuk memberikan ACC (Status Diterima), Anda wajib mengunggah Tanda Tangan Digital di menu Settings.");
+      return alert("PERHATIAN!\n\nUntuk memberikan ACC (Status Diterima), Anda wajib mengunggah Tanda Tangan Digital di menu Settings.");
     }
 
     if (!confirm(`Apakah Anda yakin ingin menyimpan hasil ulasan ini?\nStatus akhir mahasiswa akan diatur sebagai: ${newGlobalStatus.toUpperCase()}`)) return;
@@ -251,7 +251,7 @@ function DetailRevisiDosen() {
       const studentId = mhsInfo?.id; // Ambil ID dari data profile mahasiswa
       
       if (studentId) {
-        const titleNotif = newGlobalStatus === 'diterima' ? "Revisi Seminar Di-ACC ✅" : "Revisi Seminar Ditolak ❌";
+        const titleNotif = newGlobalStatus === 'diterima' ? "Revisi Seminar Di-ACC " : "Revisi Seminar Ditolak ";
         const messageNotif = newGlobalStatus === 'diterima' 
           ? `Selamat! Revisi poin-poin seminar Anda telah disetujui sepenuhnya oleh ${expData?.roleDosenIni || 'Dosen Penguji'}.`
           : `Terdapat poin revisi yang ditolak atau memerlukan perbaikan lebih lanjut dari ${expData?.roleDosenIni || 'Dosen Penguji'}. Silakan cek catatan revisi terbaru di dashboard Anda.`;
@@ -260,7 +260,7 @@ function DetailRevisiDosen() {
         await sendNotification(studentId, titleNotif, messageNotif);
       }
       
-      alert(newGlobalStatus === 'diterima' ? "✅ Berhasil! Mahasiswa telah di-ACC." : "✅ Hasil review dikirim ke Mahasiswa.");
+      alert(newGlobalStatus === 'diterima' ? "Berhasil! Mahasiswa telah di-ACC." : "Hasil review dikirim ke Mahasiswa.");
       mutate(); 
     } catch (err: any) { 
       alert("Gagal menyimpan hasil: " + err.message); 

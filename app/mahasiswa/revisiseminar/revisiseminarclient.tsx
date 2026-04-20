@@ -228,12 +228,12 @@ function DetailRevisiMahasiswa() {
 
       if (dosen_id) {
         const studentName = expData?.namaMhs || "Mahasiswa";
-        const titleNotif = "Revisi Baru Dikirim 📤";
+        const titleNotif = "Revisi Baru Dikirim";
         const messageNotif = `${studentName} telah mengirimkan update jawaban revisi dan draft perbaikan terbaru. Silakan diperiksa.`;
         await sendNotification(dosen_id, titleNotif, messageNotif);
       }
 
-      alert("✅ Progres perbaikan berhasil dikirim ke Dosen dan Notifikasi telah diteruskan!");
+      alert("Progres perbaikan berhasil dikirim ke Dosen dan Notifikasi telah diteruskan!");
       setFileUploadForm(null);
       mutate(); 
 

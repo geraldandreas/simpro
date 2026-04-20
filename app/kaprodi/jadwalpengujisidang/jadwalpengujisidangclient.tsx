@@ -62,7 +62,8 @@ const fetchJadwalSidangDosen = async () => {
         user:profiles ( nama, npm, avatar_url )
       )
     `)
-    .in('status', ['dijadwalkan', 'Selesai', 'Lulus']);
+    .in('status', ['dijadwalkan', 'Selesai', 'Lulus'])
+    .or(`penguji1.eq.${user.id},penguji2.eq.${user.id},penguji3.eq.${user.id}`);
 
   if (propIdsFromSupervisor.length > 0) {
       const propIdString = propIdsFromSupervisor.join(',');

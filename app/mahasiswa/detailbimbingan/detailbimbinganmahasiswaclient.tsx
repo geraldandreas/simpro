@@ -165,7 +165,7 @@ export default function DetailBimbinganMahasiswaClient() {
         );
       }
 
-      alert("✅ Draft berhasil dikirim ke dosen terkait!");
+      alert("Draft berhasil dikirim ke dosen terkait!");
       setFile(null); 
       mutate(); // Refresh SWR UI
     } catch (err: any) {

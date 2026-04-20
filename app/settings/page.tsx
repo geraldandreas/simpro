@@ -121,10 +121,10 @@ export default function SettingsPage() {
 
       setForm((prev) => ({ ...prev, avatar_url: publicUrl }));
       mutate(); 
-      alert("✅ Foto profil berhasil diubah!");
+      alert("Foto profil berhasil diubah!");
 
     } catch (error: any) {
-      alert("❌ Gagal mengunggah foto: " + error.message);
+      alert("Gagal mengunggah foto: " + error.message);
     } finally {
       setUploadingAvatar(false);
     }
@@ -192,9 +192,9 @@ export default function SettingsPage() {
       if (error) throw error;
       
       mutate(); 
-      alert("✅ Profil berhasil diperbarui");
+      alert("Profil berhasil diperbarui");
     } catch (err: any) {
-      alert("❌ Gagal update profil: " + err.message);
+      alert("Gagal update profil: " + err.message);
     } finally {
       setSaving(false);
     }

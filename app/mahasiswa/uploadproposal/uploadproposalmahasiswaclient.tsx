@@ -212,12 +212,12 @@ export default function UploadProposalMahasiswaClient() {
         await sendNotification(kaprodi.id, "Usulan Judul Baru", `${mhsNama} telah mengajukan judul proposal baru: "${judulSkripsi}".`);
       }
 
-      alert("✅ Dokumen dan Pengajuan Pembimbing berhasil dikirim!");
+      alert("Dokumen dan Pengajuan Pembimbing berhasil dikirim!");
       setLocalProposal(null); 
       setFileToUpload(null);
       mutate(); 
     } catch (error: any) {
-      alert(`❌ Gagal: ${error.message}`);
+      alert(`Gagal: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -401,7 +401,7 @@ export default function UploadProposalMahasiswaClient() {
 
                 {[
                   { id: 'p1', label: 'Pembimbing Utama', state: pembimbing1, setState: setPembimbing1 },
-                  { id: 'p2', label: 'Pembimbing Pendamping', state: pembimbing2, setState: setPembimbing2 }
+                  { id: 'p2', label: 'Co-Pembimbing', state: pembimbing2, setState: setPembimbing2 }
                 ].map((p) => (
                   <div key={p.id} className="space-y-2">
                     <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest ml-1">{p.label}</label>

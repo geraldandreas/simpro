@@ -196,7 +196,7 @@ export default function DetailProposalKaprodiClient() {
         }
       }
 
-      alert(isAccepted ? "✅ Berhasil menyetujui" : "✅ Berhasil menolak dan mengubah status!");
+      alert(isAccepted ? "Berhasil menyetujui" : "Berhasil menolak dan mengubah status!");
       mutate(); // 🔥 Refresh data SWR otomatis tanpa reload halaman
       setShowRejectModal(false);
     } catch (err: any) {
@@ -234,7 +234,7 @@ export default function DetailProposalKaprodiClient() {
         await sendNotification(pembimbing2, "Penugasan Pembimbing Baru", `Anda telah ditugaskan oleh Kaprodi sebagai Co-Pembimbing untuk mahasiswa: ${namaMahasiswa}.`);
       }
 
-      alert("✅ Penugasan Final Berhasil! Status Proposal kini: DITERIMA");
+      alert("Penugasan Final Berhasil! Status Proposal kini: DITERIMA");
       mutate(); // 🔥 Refresh data SWR
     } catch (err: any) { 
       alert("Gagal: " + err.message); 
@@ -252,7 +252,7 @@ export default function DetailProposalKaprodiClient() {
       await supabase.from("proposals").update({ status: "Menunggu Persetujuan Dosbing" }).eq("id", proposalId);
       
       setPembimbing1(""); setPembimbing2("");
-      alert("✅ Data pembimbing berhasil dihapus.");
+      alert("Data pembimbing berhasil dihapus.");
       mutate(); // 🔥 Refresh data SWR
     } catch (err: any) { 
       alert("Gagal menghapus: " + err.message); 
@@ -469,7 +469,7 @@ export default function DetailProposalKaprodiClient() {
             <div className="p-10 text-center">
               <div className="w-16 h-16 bg-red-50 text-red-500 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-inner"><Info size={32} /></div>
               <h3 className="text-2xl font-black text-slate-800 mb-2 tracking-tight">Alasan Penolakan</h3>
-              <p className="text-slate-500 text-xs mb-6 font-medium">Mahasiswa dan Kaprodi akan melihat alasan ini.</p>
+              <p className="text-slate-500 text-xs mb-6 font-medium">Mahasiswa akan melihat alasan ini.</p>
               <textarea 
                 value={rejectReason} 
                 onChange={(e) => setRejectReason(e.target.value)} 

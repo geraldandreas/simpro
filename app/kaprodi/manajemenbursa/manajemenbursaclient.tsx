@@ -176,7 +176,7 @@ export default function MonitoringBursaPage() {
       const { error: err2 } = await supabase.from('proposal_recommendations').delete().neq('id', '00000000-0000-0000-0000-000000000000');
       if (err2) throw err2;
 
-      alert("✅ Data berhasil di-reset! Sistem siap untuk pendaftaran mahasiswa di semester baru.");
+      alert("Data berhasil di-reset! Sistem siap untuk pendaftaran mahasiswa di semester baru.");
       setShowResetModal(false);
       mutateBursa(); // 🔥 Refresh data Bursa yang aktif
     } catch (err: any) {
@@ -203,12 +203,17 @@ export default function MonitoringBursaPage() {
         let dosenNo = 1;
 
         dosens.forEach((dosen: any) => {
-          const bimbingan = sups.filter((s: any) => 
-            s.dosen_id === dosen.id && 
-            s.role === roleTarget &&
-            s.status === "accepted" && 
-            s.proposal?.status === "Diterima"
-          );
+          // 🔥 PERBAIKAN: Menambahkan filter isNotLulus agar sama dengan UI 🔥
+          const bimbingan = sups.filter((s: any) => {
+            const isNotLulus = s.proposal?.status_lulus !== true && s.proposal?.status !== "Lulus";
+            return (
+              s.dosen_id === dosen.id && 
+              s.role === roleTarget &&
+              s.status === "accepted" && 
+              s.proposal?.status === "Diterima" &&
+              isNotLulus // Membuang mahasiswa yang sudah lulus
+            );
+          });
 
           if (bimbingan.length > 0) {
             const startRow = currentRowIndex;

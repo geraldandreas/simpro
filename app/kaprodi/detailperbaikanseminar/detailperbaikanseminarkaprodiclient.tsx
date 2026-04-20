@@ -222,7 +222,7 @@ function DetailRevisiDosen() {
 
     // Validasi: Jika ada yang ditolak, dosen WAJIB mengisi alasan penolakannya
     const hasEmptyFeedback = pointData.some(p => p.status === 'rejected' && (!p.dosen_feedback || p.dosen_feedback.trim() === ''));
-    if (hasEmptyFeedback) return alert("⚠️ Anda menolak poin perbaikan, namun ada kolom 'Alasan Penolakan' yang belum diisi. Harap lengkapi terlebih dahulu.");
+    if (hasEmptyFeedback) return alert("Anda menolak poin perbaikan, namun ada kolom 'Alasan Penolakan' yang belum diisi. Harap lengkapi terlebih dahulu.");
 
     // Tentukan Status Global (Berdasarkan Poin)
     const isAnyRejected = pointData.some(p => p.status === 'rejected');
@@ -233,7 +233,7 @@ function DetailRevisiDosen() {
     else if (isAllApproved) newGlobalStatus = 'diterima';
 
     if (newGlobalStatus === 'diterima' && !dosenTtdUrl) {
-      return alert("⚠️ PERHATIAN!\n\nUntuk memberikan ACC (Status Diterima), Anda wajib mengunggah Tanda Tangan Digital di menu Settings.");
+      return alert("PERHATIAN!\n\nUntuk memberikan ACC (Status Diterima), Anda wajib mengunggah Tanda Tangan Digital di menu Settings.");
     }
 
     if (!confirm(`Apakah Anda yakin ingin menyimpan hasil ulasan ini?\nStatus akhir mahasiswa akan diatur sebagai: ${newGlobalStatus.toUpperCase()}`)) return;

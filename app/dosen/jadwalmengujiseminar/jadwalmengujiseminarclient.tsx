@@ -209,7 +209,7 @@ function DetailContent() {
     if (!id || isLocked) return; 
 
     if (statusRevisi === "diterima" && !dosenTtdUrl) {
-      alert("⚠️ PERHATIAN!\n\nAnda belum mengunggah Tanda Tangan Digital.\nSilakan masuk ke menu 'Settings' untuk mengunggah TTD Anda sebelum memberikan ACC Lanjut Sidang.");
+      alert("PERHATIAN!\n\nAnda belum mengunggah Tanda Tangan Digital.\nSilakan masuk ke menu 'Settings' untuk mengunggah TTD Anda sebelum memberikan ACC Lanjut Sidang.");
       return; 
     }
 

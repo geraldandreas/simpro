@@ -248,7 +248,7 @@ export default function PenjadwalanSeminarKaprodiClient() {
 
       await Promise.all(notificationPromises);
 
-      alert("✅ Jadwal seminar berhasil ditetapkan dan notifikasi telah dikirim ke semua pihak!");
+      alert("Jadwal seminar berhasil ditetapkan dan notifikasi telah dikirim ke semua pihak!");
       mutate(); // Refresh SWR state
       router.push('/kaprodi/pengajuanseminar');
       

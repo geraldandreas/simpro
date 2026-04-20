@@ -126,13 +126,15 @@ const fetchDetailProgresData = async (proposalId: string | null) => {
 
   // 6. Hitung Kelayakan & Panggil Mapper Global
   const approvedByAll = !!activeSeminarReq?.approved_by_p1 && !!activeSeminarReq?.approved_by_p2;
-  let isEligible = (p1Count >= 10 && p2Count >= 10) || approvedByAll;
-  let hasSeminar = !!activeSeminarReq;
+  // 🔥 PERBAIKAN 1: Gunakan && (DAN). Harus bimbingan 10x DAN di-ACC keduanya.
+let isEligible = p1Count >= 10 && p2Count >= 10 && approvedByAll;
+let hasSeminar = !!activeSeminarReq;
 
-  if (currentDocs.length > 0 || activeSeminarReq) {
-    isEligible = true;
-    hasSeminar = true;
-  }
+// 🔥 PERBAIKAN 2: Hanya force true jika dokumen diunggah ATAU seminar sudah di-ACC kedua dosen.
+if (currentDocs.length > 0 || (activeSeminarReq && approvedByAll)) {
+  isEligible = true;
+  hasSeminar = true;
+}
 
   const ui = mapStatusToUI({
     proposalStatus: propData.status,

@@ -294,7 +294,7 @@ const DashboardMahasiswa: React.FC = () => {
                         <ShieldCheck size={32} className="text-amber-300" />
                       </div>
                       <div>
-                        <h3 className="text-2xl font-black uppercase tracking-tight mb-1 text-white">Selamat, Anda Lulus! 🎉</h3>
+                        <h3 className="text-2xl font-black uppercase tracking-tight mb-1 text-white">Selamat, Anda Lulus !</h3>
                         <p className="text-blue-100 text-sm font-medium leading-relaxed max-w-2xl">
                           Skripsi Anda telah disahkan oleh Kaprodi dan Anda resmi dinyatakan Lulus. Semua perjuangan Anda terbayar lunas. Sukses untuk langkah selanjutnya!
                         </p>

@@ -44,7 +44,7 @@ const fetchDetailPengujiData = async (dosenId: string | null) => {
     .eq("dosen_id", dosenId)
     .not("seminar_request", "is", null);
 
-  if (seminarError) console.error("❌ Error Seminar:", seminarError.message);
+  if (seminarError) console.error("Error Seminar:", seminarError.message);
 
   // 3. Fetch Data Menguji Sidang 
   const { data: sidangData, error: sidangError } = await supabase
@@ -61,7 +61,7 @@ const fetchDetailPengujiData = async (dosenId: string | null) => {
     `)
     .eq("dosen_id", dosenId);
 
-  if (sidangError) console.error("❌ Error Sidang:", sidangError.message);
+  if (sidangError) console.error("Error Sidang:", sidangError.message);
 
   return {
     dosenNama: profileData?.nama || "",

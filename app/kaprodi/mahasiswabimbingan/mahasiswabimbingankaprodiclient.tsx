@@ -51,8 +51,14 @@ export function mapStatusToUI(params: {
     return { label: "Perbaikan Pasca Seminar", color: "bg-orange-100 text-orange-700 border-orange-200" };
   }
 
-  if (verifiedDocsCount >= 3) {
+  const isSeminarScheduled = seminarStatus === 'Dijadwalkan' || seminarStatus === 'Disetujui' || seminarStatus === 'Selesai';
+  if (isSeminarScheduled) {
     return { label: "Seminar Hasil", color: "bg-emerald-100 text-emerald-700 border-emerald-200" };
+  }
+
+  // 🔥 TAHAN di Verifikasi Berkas jika dokumen lengkap TAPI Kaprodi belum membuat jadwal
+  if (verifiedDocsCount >= 3) {
+    return { label: "Verifikasi Berkas", color: "bg-blue-100 text-blue-700 border-blue-200" };
   }
 
   if (proposalStatus === "Menunggu Persetujuan Dosbing" || proposalStatus === "Pengajuan Proposal") {
@@ -63,7 +69,7 @@ export function mapStatusToUI(params: {
     if (isEligible) {
       if (uploadedDocsCount >= 3) return { label: "Verifikasi Berkas", color: "bg-purple-100 text-purple-700 border-purple-200" };
       if (uploadedDocsCount > 0) return { label: "Unggah Dokumen Seminar", color: "bg-blue-100 text-blue-700 border-blue-200" };
-      return { label: "Proses Kesiapan Seminar", color: "bg-blue-100 text-blue-700 border-blue-200" };
+      return { label: "Persetujuan Seminar", color: "bg-blue-100 text-blue-700 border-blue-200" };
     }
     return { label: "Proses Bimbingan", color: "bg-indigo-100 text-indigo-700 border-indigo-200" };
   }
@@ -336,7 +342,7 @@ export default function MahasiswaBimbinganKaprodiClient() {
 
       await Promise.all(notificationPromises);
 
-      alert(`✅ Jadwal bimbingan Sesi ${sesi} berhasil diterapkan dan notifikasi terkirim!`);
+      alert(`Jadwal bimbingan Sesi ${sesi} berhasil diterapkan dan notifikasi terkirim!`);
       mutate(); // Refresh data via SWR
       setSelectedDate(null); // Reset Form 
     } catch (err) {

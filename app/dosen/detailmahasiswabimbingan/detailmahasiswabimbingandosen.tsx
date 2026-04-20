@@ -178,7 +178,7 @@ export default function DetailMahasiswaBimbinganKaprodiClient() {
         await sendNotification(proposal.user_id, title, message);
       }
 
-      alert("✅ Detail sesi berhasil diperbarui!");
+      alert("Detail sesi berhasil diperbarui!");
       setIsEditModalOpen(false);
       
       // 🔥 REFRESH DATA SWR TANPA RELOAD 🔥

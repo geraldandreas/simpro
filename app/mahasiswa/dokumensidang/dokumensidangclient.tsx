@@ -204,7 +204,7 @@ export default function DokumenSidangMahasiswa() {
         await sendNotification(kaprodi.id, "Pengajuan Sidang Baru", `Mahasiswa atas nama ${mhsName} telah menyelesaikan pemberkasan sidang dan siap dijadwalkan.`);
       }
 
-      alert("✅ Berhasil! Pengajuan Sidang Skripsi telah diteruskan ke Kaprodi.");
+      alert("Berhasil! Pengajuan Sidang Skripsi telah diteruskan ke Kaprodi.");
       router.push('/mahasiswa/dashboard'); 
     } catch (err: any) {
       alert("Gagal mengajukan sidang: " + err.message);

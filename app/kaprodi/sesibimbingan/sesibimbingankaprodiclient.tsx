@@ -241,8 +241,8 @@ function DetailBimbinganDosen() {
 
   const handleSave = async () => {
     if (!sessionId || !session) return;
-    if (!kehadiran) return alert("❗ Tentukan kehadiran mahasiswa terlebih dahulu");
-    if (!statusRevisi) return alert("❗ Tentukan status bimbingan Mahasiswa (selesai / revisi)");
+    if (!kehadiran) return alert("Tentukan kehadiran mahasiswa terlebih dahulu");
+    if (!statusRevisi) return alert("Tentukan status bimbingan Mahasiswa (selesai / revisi)");
 
     setSaving(true);
     try {
@@ -308,12 +308,12 @@ function DetailBimbinganDosen() {
         }
       }
 
-      alert("✅ Feedback dan Kehadiran berhasil disimpan");
+      alert("Feedback dan Kehadiran berhasil disimpan");
       setFileBalasan(null);
       mutate(); // 🔥 Refresh SWR Cache
     } catch (err: any) {
       console.error(err);
-      alert("❌ Gagal menyimpan feedback");
+      alert("Gagal menyimpan feedback");
     } finally {
       setSaving(false);
     }
@@ -378,7 +378,7 @@ function DetailBimbinganDosen() {
         if (error) throw error;
       }
 
-      alert("✅ ACC Seminar berhasil dicatat");
+      alert("ACC Seminar berhasil dicatat");
       
       setIsSeminarApproved(true);
       mutate(); // 🔥 Refresh SWR Cache
@@ -399,7 +399,7 @@ function DetailBimbinganDosen() {
 
     } catch (err: any) {
       console.error(err);
-      alert("❌ Gagal ACC Seminar: " + err.message);
+      alert("Gagal ACC Seminar: " + err.message);
     } finally {
       setSaving(false);
     }
