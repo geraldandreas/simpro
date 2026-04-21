@@ -6,7 +6,14 @@ import { supabase } from '@/lib/supabaseClient';
 
 export default function Login() {
   const router = useRouter();
+  
+  // State untuk Loading & Mode Testing
   const [loading, setLoading] = useState(false);
+  const [isTestMode, setIsTestMode] = useState(false);
+  
+  // State untuk input form manual
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
 
   // ==============================
   // 🔁 Redirect berdasarkan role
@@ -20,6 +27,7 @@ export default function Login() {
 
     if (error || !profile) {
       alert('Role user tidak ditemukan.');
+      setLoading(false);
       return;
     }
 
@@ -33,7 +41,7 @@ export default function Login() {
   };
 
   // ==============================
-  // 🔵 Login Google OAuth
+  // 🔵 Login Google OAuth (Asli)
   // ==============================
   const handleGoogleLogin = async () => {
     setLoading(true);
@@ -46,6 +54,27 @@ export default function Login() {
     if (error) {
       alert(error.message);
       setLoading(false);
+    }
+  };
+
+  // ==============================
+  // 🟢 Login Email/Password (Bypass Testing)
+  // ==============================
+  const handleEmailLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email,
+      password: password,
+    });
+
+    if (error) {
+      alert("Login gagal: " + error.message);
+      setLoading(false);
+    } else if (data.user) {
+      // Langsung arahkan berdasarkan role setelah berhasil login
+      await redirectByRole(data.user.id);
     }
   };
 
@@ -95,10 +124,7 @@ export default function Login() {
         {/* --- LENGKUNGAN (CURVE) - Bulat Sempurna --- */}
         <div 
           className="hidden lg:block absolute top-[-10%] -right-[35%] h-[120%] w-[50%] bg-white shadow-[-50px_0_100px_rgba(0,0,0,0.03)]"
-          style={{ 
-            borderRadius: "50%", 
-            zIndex: 5 
-          }}
+          style={{ borderRadius: "50%", zIndex: 5 }}
         />
       </div>
 
@@ -106,27 +132,83 @@ export default function Login() {
       <div className="relative flex flex-col justify-center items-center px-8 py-20 lg:px-24">
         <div className="w-full max-w-sm relative z-10">
           <div className="mb-12 text-center lg:text-left">
-            <h2 className="text-4xl font-black text-slate-900 mb-4 tracking-tighter uppercase">Masuk Akun</h2>
+            <h2 className="text-4xl font-black text-slate-900 mb-4 tracking-tighter uppercase">
+              {isTestMode ? 'Akses Khusus' : 'Masuk Akun'}
+            </h2>
             <p className="text-slate-500 font-bold text-sm tracking-tight leading-relaxed max-w-[280px] mx-auto lg:mx-0">
-              Silakan masuk menggunakan akun Google institusi yang telah terdaftar.
+              {isTestMode 
+                ? 'Gunakan email dan password dummy yang telah diberikan untuk keperluan testing.' 
+                : 'Silakan masuk menggunakan akun Google institusi yang telah terdaftar.'}
             </p>
           </div>
 
-          <button
-            onClick={handleGoogleLogin}
-            disabled={loading}
-            className="w-full group bg-white border-2 border-slate-100 py-4 rounded-2xl flex items-center justify-center gap-4 hover:border-[#0d64a8] hover:bg-blue-50/50 transition-all duration-300 shadow-sm active:scale-95 disabled:opacity-50"
-          >
-            <img 
-              src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" 
-              className="w-6 transition-transform group-hover:rotate-12" 
-              alt="Google" 
-            />
-            <span className="text-slate-800 font-black text-xs uppercase tracking-widest">
-              {loading ? 'Memproses...' : 'Masuk Dengan Google'}
-            </span>
-          </button>
+          {/* RENDER KONDISIONAL FORM */}
+          {!isTestMode ? (
+            <>
+              {/* TOMBOL GOOGLE */}
+              <button
+                onClick={handleGoogleLogin}
+                disabled={loading}
+                className="w-full group bg-white border-2 border-slate-100 py-4 rounded-2xl flex items-center justify-center gap-4 hover:border-[#0d64a8] hover:bg-blue-50/50 transition-all duration-300 shadow-sm active:scale-95 disabled:opacity-50"
+              >
+                <img 
+                  src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" 
+                  className="w-6 transition-transform group-hover:rotate-12" 
+                  alt="Google" 
+                />
+                <span className="text-slate-800 font-black text-xs uppercase tracking-widest">
+                  {loading ? 'Memproses...' : 'Masuk Dengan Google'}
+                </span>
+              </button>
 
+              {/* TOMBOL RAHASIA UNTUK TESTING DOSEN */}
+              <div className="mt-6 text-center lg:text-left">
+                <button 
+                  onClick={() => setIsTestMode(true)}
+                  className="text-[9px] font-black text-slate-300 hover:text-slate-500 transition-colors uppercase tracking-[0.2em]"
+                >
+                  [ Bypass UAT / Dosen ]
+                </button>
+              </div>
+            </>
+          ) : (
+            /* FORM EMAIL/PASSWORD TESTING */
+            <form onSubmit={handleEmailLogin} className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <input 
+                type="email" 
+                placeholder="Email Dosen (Testing)" 
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full border-2 border-slate-100 py-3 px-4 rounded-xl text-sm font-bold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0d64a8] transition-colors"
+              />
+              <input 
+                type="password" 
+                placeholder="Password" 
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full border-2 border-slate-100 py-3 px-4 rounded-xl text-sm font-bold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0d64a8] transition-colors"
+              />
+              <button 
+                type="submit" 
+                disabled={loading}
+                className="w-full bg-[#0d64a8] text-white py-4 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-[#0a4d82] transition-colors active:scale-95 disabled:opacity-50 mt-2"
+              >
+                {loading ? 'Memproses...' : 'Masuk (Testing)'}
+              </button>
+              
+              <button 
+                type="button"
+                onClick={() => setIsTestMode(false)}
+                className="mt-4 text-[10px] font-black text-slate-400 hover:text-slate-600 uppercase tracking-widest text-center"
+              >
+                Kembali ke Login Google
+              </button>
+            </form>
+          )}
+
+          {/* FOOTER DAFTAR AKUN */}
           <div className="mt-12 pt-10 border-t border-slate-100 text-center lg:text-left">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
               Belum memiliki akun? 
