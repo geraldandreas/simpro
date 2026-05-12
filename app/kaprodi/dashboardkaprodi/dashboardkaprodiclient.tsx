@@ -42,7 +42,7 @@ const fetchDashboardKaprodiData = async () => {
   const { data: seminarData } = await supabase
     .from("seminar_requests")
     .select(`id, status, seminar_schedules ( id )`)
-    .in("status", ["Disetujui", "Menunggu Penjadwalan"]);
+    .in("status", [" Menunggu Persetujuan","Disetujui", "Menunggu Penjadwalan"]);
 
   const totalSeminarSiap = (seminarData || []).filter(
     (s: any) => !s.seminar_schedules || s.seminar_schedules.length === 0
@@ -133,7 +133,7 @@ const fetchDashboardKaprodiData = async () => {
 
       if (activeSeminar.status === 'Selesai' || hasFeedback) {
         finalTahap = "Perbaikan Pasca Seminar"; 
-        if (isAllRevisiAcc) finalTahap = "Pendaftaran Sidang Akhir";
+        if (isAllRevisiAcc) finalTahap = "Pendaftaran Sidang Skripsi";
       }
     }
 
@@ -195,8 +195,7 @@ export default function DashboardKaprodiClient() {
       case "Verifikasi Berkas": return "bg-blue-100 text-blue-700 border-blue-200";
       case "Seminar Hasil": return "bg-green-100 text-green-700 border-green-200";
       case "Perbaikan Pasca Seminar": return "bg-orange-100 text-orange-700 border-orange-200"; 
-      case "Pendaftaran Sidang Akhir":
-      case "Pendaftaran Sidang Skripsi": return "bg-yellow-100 text-yellow-700 border-yellow-200";
+      case "Pendaftaran Sidang Skripsi": return "bg-blue-100 text-blue-700 border-blue-200";
       case "Sidang Skripsi":
       case "Lulus": return "bg-emerald-100 text-emerald-700 border-emerald-200"; 
       default: return "bg-slate-50 text-slate-600 border-slate-100";

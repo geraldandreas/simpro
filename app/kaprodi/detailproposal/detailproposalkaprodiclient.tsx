@@ -78,9 +78,15 @@ const fetchDetailProposalData = async (proposalId: string | null) => {
     supabase.from("proposal_recommendations").select(`dosen_id, tipe, dosen:profiles ( nama )`).eq("proposal_id", proposalId)
   ]);
 
+  // 🔥 PINDAHKAN CEK STATUS KE SINI 🔥
+  const activeStatuses = ["Pending", "Ditinjau Kaprodi", "Menunggu Persetujuan Dosbing", "Pengajuan Proposal", "Ditolak Dosbing", "Ditolak"];
+  const isAssigned = !activeStatuses.includes(propData.status);
+
   // Merge Data
   let displayList = supervisors ? [...supervisors] : [];
-  if (recommendations && recommendations.length > 0) {
+  
+  // 🔥 KONDISI BARU: HANYA gabungkan rekomendasi JIKA proposal BELUM final (isAssigned = false) 🔥
+  if (!isAssigned && recommendations && recommendations.length > 0) {
     recommendations.forEach(rec => {
       const isAlreadyProcessed = displayList.find(s => s.dosen_id === rec.dosen_id);
       if (!isAlreadyProcessed) {
@@ -104,9 +110,6 @@ const fetchDetailProposalData = async (proposalId: string | null) => {
   const p1 = displayList.find((s) => s.role === "utama")?.dosen_id || "";
   const p2 = displayList.find((s) => s.role === "pendamping")?.dosen_id || "";
   
-  const activeStatuses = ["Pending", "Ditinjau Kaprodi", "Menunggu Persetujuan Dosbing", "Pengajuan Proposal", "Ditolak Dosbing", "Ditolak"];
-  const isAssigned = !activeStatuses.includes(propData.status);
-
   const myResponseData = displayList.find((s) => s.dosen_id === userId) || null;
 
   return {

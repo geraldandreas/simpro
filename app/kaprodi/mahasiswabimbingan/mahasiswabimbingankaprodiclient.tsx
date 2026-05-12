@@ -1,7 +1,7 @@
 "use client";
 
 import { JSX, useState } from "react";
-import useSWR from "swr"; // 🚀 Import SWR
+import useSWR from "swr"; 
 import NotificationBell from '@/components/notificationBell';
 import { sendNotification } from "@/lib/notificationUtils";
 import Link from "next/link";
@@ -159,7 +159,7 @@ const fetchMahasiswaBimbinganData = async () => {
 
       if (activeSeminar.status === 'Selesai' || hasFeedback) {
         finalTahap = "Perbaikan Pasca Seminar"; 
-        if (isAllRevisiAcc) finalTahap = "Pendaftaran Sidang Akhir";
+        if (isAllRevisiAcc) finalTahap = "Pendaftaran Sidang Skripsi";
       }
     }
 
@@ -227,8 +227,7 @@ export default function MahasiswaBimbinganKaprodiClient() {
       case "Verifikasi Berkas": return "bg-blue-100 text-blue-700 border-blue-200";
       case "Seminar Hasil": return "bg-green-100 text-green-700 border-green-200";
       case "Perbaikan Pasca Seminar": return "bg-orange-100 text-orange-700 border-orange-200"; 
-      case "Pendaftaran Sidang Akhir":
-      case "Pendaftaran Sidang Skripsi": return "bg-yellow-100 text-yellow-700 border-yellow-200";
+      case "Pendaftaran Sidang Skripsi": return "bg-blue-100 text-blue-700 border-blue-200";
       case "Sidang Skripsi":
       case "Lulus": return "bg-emerald-100 text-emerald-700 border-emerald-200"; 
       default: return "bg-slate-100 text-slate-600 border-slate-200";

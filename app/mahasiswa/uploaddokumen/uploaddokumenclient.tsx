@@ -32,6 +32,13 @@ const fetcher = async () => {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
+  // 🔥 1. Ambil Nama Mahasiswa dari tabel profiles (sesuaikan 'nama' atau 'name' dengan kolom di DB kamu)
+  const { data: userProfile } = await supabase
+    .from('profiles')
+    .select('nama') // Ganti menjadi 'name' jika nama kolom di DB kamu bahasa inggris
+    .eq('id', user.id)
+    .maybeSingle();
+
   // 1. Ambil Proposal ID
   const { data: proposal } = await supabase
     .from('proposals')
@@ -84,7 +91,8 @@ const fetcher = async () => {
     bimbinganCount: { p1, p2 },
     isEligible,
     documentsMap,
-    userId: user.id
+    userId: user.id,
+    studentName: userProfile?.nama || "Mahasiswa"
   };
 };
 
@@ -107,6 +115,7 @@ export default function UploadDokumenClient() {
   const seminarStatus = data?.seminarStatus || null;
   const bimbinganCount = data?.bimbinganCount || { p1: 0, p2: 0 };
   const documents = data?.documentsMap || {};
+  const studentName = data?.studentName || "Mahasiswa";
   const isSubmitted = seminarStatus && seminarStatus !== 'draft';
 
   // ================= HANDLERS =================
@@ -144,7 +153,7 @@ export default function UploadDokumenClient() {
           await sendNotification(
             tendik.id,
             "Verifikasi Berkas Baru",
-            `Mahasiswa telah mengunggah dokumen "${docLabel}". Mohon segera diverifikasi.`
+            `Mahasiswa atas nama ${studentName} telah mengunggah "${docLabel}". Mohon segera diverifikasi.`
           );
         }
       }
@@ -198,7 +207,7 @@ export default function UploadDokumenClient() {
           await sendNotification(
             kaprodi.id,
             "Pengajuan Jadwal Seminar",
-            "Seorang mahasiswa telah melengkapi seluruh berkas seminar. Mohon segera tetapkan jadwal."
+            `Mahasiswa atas nama ${studentName} telah melengkapi seluruh berkas seminar. Mohon segera tetapkan jadwal.`
           );
         }
 

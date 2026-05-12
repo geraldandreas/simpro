@@ -156,6 +156,19 @@ export default function DokumenSidangMahasiswa() {
 
       if (dbError) throw dbError;
       
+      // 🔥 TAMBAHAN: NOTIFIKASI KE TENDIK DENGAN NAMA MAHASISWA 🔥
+      const { data: profile } = await supabase.from('profiles').select('nama').eq('id', userId).maybeSingle();
+      const mhsName = profile?.nama || "Seorang Mahasiswa";
+
+      const { data: tendik } = await supabase.from('profiles').select('id').eq('role', 'tendik').maybeSingle();
+      if (tendik) {
+        await sendNotification(
+          tendik.id,
+          "Verifikasi Berkas Sidang Baru",
+          `Mahasiswa atas nama ${mhsName} telah mengunggah File Skripsi Final. Mohon segera diverifikasi.`
+        );
+      }
+      
       mutate(); 
       alert("Skripsi Final berhasil diunggah. Mohon tunggu verifikasi Tendik.");
     } catch (err: any) { 

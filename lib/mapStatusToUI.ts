@@ -45,7 +45,7 @@ export function mapStatusToUI({
 
   // --- PRIORITAS 3: PROGRES ADMINISTRATIF AWAL ---
   if (proposalStatus === "Menunggu Persetujuan Dosbing") {
-    return { label: "Persetujuan Dosbing", color: "bg-amber-100 text-amber-700 border-amber-200", step: 1 };
+    return { label: " Menunggu Persetujuan Dosbing", color: "bg-amber-100 text-amber-700 border-amber-200", step: 1 };
   }
 
   if (proposalStatus === "Diterima") {

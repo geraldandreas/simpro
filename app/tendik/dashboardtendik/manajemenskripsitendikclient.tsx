@@ -26,7 +26,7 @@ import { supabase } from "@/lib/supabaseClient";
 // --- OPSI FILTER ---
 const FILTER_OPTIONS = [
   "Semua Status",
-  "Pengajuan Proposal",
+  "Menunggu Persetujuan Dosbing",
   "Proses Bimbingan",
   "Persetujuan Seminar",
   "Unggah Dokumen Seminar",
@@ -214,14 +214,14 @@ export default function DashboardTendikMain() {
   // ================= HELPER WARNA BADGE =================
   const getStatusBadgeStyle = (status: string) => {
     switch (status) {
-      case "Pengajuan Proposal": return "bg-amber-100 text-amber-700 border-amber-200"; 
+      case "Menunggu Persetujuan Dosbing": return "bg-amber-100 text-amber-700 border-amber-200"; 
       case "Proses Bimbingan": return "bg-indigo-100 text-indigo-700 border-indigo-200"; 
       case "Persetujuan Seminar": return "bg-purple-100 text-purple-700 border-purple-200"; 
       case "Unggah Dokumen Seminar": return "bg-green-100 text-green-700 border-green-200";
       case "Verifikasi Berkas": return "bg-blue-100 text-blue-700 border-blue-200";
       case "Seminar Hasil": return "bg-green-100 text-green-700 border-green-200";
       case "Perbaikan Pasca Seminar": return "bg-orange-100 text-orange-700 border-orange-200"; 
-      case "Pendaftaran Sidang Skripsi": return "bg-yellow-100 text-yellow-700 border-yellow-200";
+      case "Pendaftaran Sidang Skripsi": return "bg-blue-100 text-blue-700 border-blue-200";
       case "Sidang Skripsi":
       case "Lulus": return "bg-emerald-100 text-emerald-700 border-emerald-200"; 
       default: return "bg-slate-100 text-slate-600 border-slate-200";

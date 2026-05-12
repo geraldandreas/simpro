@@ -195,7 +195,6 @@ function DetailContentSidang() {
           dosen_id: user.id,
           nilai_akhir: parseFloat(nilai),
           detail_nilai: detailNilaiJson, 
-          catatan: null, 
         }, { onConflict: 'sidang_request_id,dosen_id' }); 
 
       if (upsertError) throw upsertError;
