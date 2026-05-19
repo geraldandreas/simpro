@@ -400,12 +400,16 @@ const DashboardMahasiswa: React.FC = () => {
                       <ContactCard key={sp.id} name={sp.name} role={sp.role} email={sp.email} phone={sp.phone} avatar_url={sp.avatar_url} />
                     ))}
 
-                    <div className="bg-slate-900 p-6 rounded-[2rem] text-white relative overflow-hidden shadow-lg">
-                      <p className="text-[10px] font-black opacity-50 uppercase tracking-widest mb-4">Administrasi</p>
-                      <p className="text-sm font-bold">Bapak Anton</p>
-                      <p className="text-[10px] opacity-70">Tenaga Kependidikan Prodi</p>
-                      <User className="absolute -right-4 -bottom-4 text-white opacity-10 w-24 h-24" />
-                    </div>
+                   <div className="bg-slate-900 p-6 rounded-[2rem] text-white relative overflow-hidden shadow-lg">
+  <p className="text-[10px] font-black opacity-50 uppercase tracking-widest mb-4">Administrasi</p>
+  <p className="text-sm font-bold">Bapak Anton</p>
+  <p className="text-[10px] opacity-70">Tenaga Kependidikan Prodi</p>
+  {/* Tambahan nomor WA/Telepon */}
+  <div className="mt-3 inline-flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-lg backdrop-blur-sm">
+    <span className="text-[11px] font-bold tracking-wider">+62 811-2202-674</span>
+  </div>
+  <User className="absolute -right-4 -bottom-4 text-white opacity-10 w-24 h-24" />
+</div>
                   </div>
 
                 </div>

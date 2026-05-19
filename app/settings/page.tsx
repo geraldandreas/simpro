@@ -399,13 +399,18 @@ export default function SettingsPage() {
                 </section>
 
                 <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white relative overflow-hidden shadow-2xl">
-                  <div className="relative z-10">
-                      <p className="text-[10px] font-black opacity-50 uppercase tracking-[0.2em] mb-4 text-blue-400">Pusat Bantuan</p>
-                      <h4 className="text-lg font-bold mb-2">Butuh Bantuan?</h4>
-                      <p className="text-[11px] opacity-70 leading-relaxed font-medium">Jika Anda mengalami kendala teknis terkait pengaturan akun, silakan hubungi Tenaga Kependidikan Prodi.</p>
-                  </div>
-                  <User className="absolute -right-6 -bottom-6 text-white opacity-5 w-32 h-32" />
-                </div>
+  <div className="relative z-10">
+      <p className="text-[10px] font-black opacity-50 uppercase tracking-[0.2em] mb-4 text-blue-400">Pusat Bantuan</p>
+      <h4 className="text-lg font-bold mb-2">Butuh Bantuan?</h4>
+      <p className="text-[11px] opacity-70 leading-relaxed font-medium mb-4">Jika Anda mengalami kendala teknis terkait pengaturan akun, silakan hubungi Bapak Anton (Tenaga Kependidikan Prodi).</p>
+      
+      {/* Tambahan Kontak Bapak Anton */}
+      <div className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 transition-colors cursor-default px-4 py-2 rounded-xl backdrop-blur-sm border border-white/10">
+        <span className="text-xs font-bold tracking-wider">+62 811-2202-674</span>
+      </div>
+  </div>
+  <User className="absolute -right-6 -bottom-6 text-white opacity-5 w-32 h-32" />
+</div>
               </div>
 
             </div>

@@ -21,6 +21,7 @@ export default function NilaiSidangMahasiswaClient() {
   const [rekapNilai, setRekapNilai] = useState<Penilai[]>([]);
   const [nilaiAkhir, setNilaiAkhir] = useState<number>(0);
   const [hurufMutu, setHurufMutu] = useState<string>("-");
+  const [hasSidang, setHasSidang] = useState(false); // Tambahkan ini
 
   // State khusus untuk Nilai Seminar
   const [nilaiSeminar, setNilaiSeminar] = useState<number | null>(null);
@@ -46,7 +47,11 @@ export default function NilaiSidangMahasiswaClient() {
       }
 
       const { data: sidangReq } = await supabase.from('sidang_requests').select('id, tanggal_sidang').eq('proposal_id', proposal.id).maybeSingle();
-      
+      if (sidangReq) {
+        setHasSidang(true);
+      } else {
+        setHasSidang(false);
+      }
       setDataMahasiswa({
         nama: profile?.nama,
         npm: profile?.npm,
@@ -337,17 +342,26 @@ export default function NilaiSidangMahasiswaClient() {
                    </div>
                 )}
 
-                {/* BOX LAMA: REKAPITULASI NILAI SIDANG */}
-                {!isComplete ? (
+               {!hasSidang ? (
+                  // KONDISI 1: BELUM ADA SIDANG SAMA SEKALI
+                  <div className="bg-white rounded-[2.5rem] shadow-xl p-12 text-center border border-white flex flex-col items-center justify-center min-h-[300px]">
+                    <div className="w-20 h-20 bg-slate-50 text-slate-300 rounded-full flex items-center justify-center mb-6">
+                      <FileText size={32} />
+                    </div>
+                    <h2 className="text-xl font-black text-slate-400 uppercase mb-2 tracking-tight">Belum Ada Data Sidang</h2>
+                    <p className="text-xs font-bold text-slate-400 max-w-sm">Nilai sidang akhir akan muncul di sini setelah Anda mengajukan dan melaksanakan Sidang Skripsi.</p>
+                  </div>
+                ) : !isComplete ? (
+                  // KONDISI 2: SIDANG SUDAH ADA TAPI NILAI BELUM LENGKAP
                   <div className="bg-white rounded-[2.5rem] shadow-xl p-12 text-center border border-white flex flex-col items-center">
                     <Clock size={48} className="text-amber-500 mb-6" />
                     <h2 className="text-2xl font-black text-slate-800 uppercase mb-2">Penilaian Sidang Sedang Diproses</h2>
                     <div className="w-full max-w-lg bg-slate-50 p-6 rounded-[2rem] text-left mt-8">
                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Status Pengisian Nilai</p>
                        {rekapNilai.map((item, idx) => (
-                         <div key={idx} className="flex justify-between mb-2">
+                         <div key={idx} className="flex justify-between mb-2 items-center border-b border-slate-100 last:border-0 pb-2 last:pb-0">
                            <span className="text-sm font-bold">{item.role_tabel}</span>
-                           <span className={`text-xs font-black uppercase ${item.nilai_angka ? 'text-emerald-500' : 'text-amber-500'}`}>
+                           <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-lg ${item.nilai_angka ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}>
                              {item.nilai_angka ? 'Selesai' : 'Menunggu'}
                            </span>
                          </div>
@@ -355,6 +369,7 @@ export default function NilaiSidangMahasiswaClient() {
                     </div>
                   </div>
                 ) : (
+                  // KONDISI 3: SIDANG SELESAI (KODE LAMA LU TETAP SAMA)
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="bg-emerald-500 text-white rounded-[2.5rem] shadow-xl p-10 relative overflow-hidden flex flex-col justify-center">
                       <Award size={160} className="absolute -right-6 -top-6 opacity-10" />
